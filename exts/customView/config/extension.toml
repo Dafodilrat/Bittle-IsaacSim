@@ -1,0 +1,10 @@
+[package]
+version = "1.0.0"
+title = "RL Viewport UI"
+category = "custom"
+description = "Custom viewport + RL slider UI"
+readme = ""
+
+[[python.module]]
+name = "customView.ext"
+public = true
