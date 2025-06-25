@@ -5,17 +5,17 @@ import omni.timeline
 
 from .Bittle import Bittle
 from .PPO import train
-
+from .world import Environment
 
 class MinimalViewportExtension(omni.ext.IExt):
 
     def __init__(self):
         super().__init__()
-        self.bittle = None
         self._training_subscription = None
         self._window = None
         self.default_weights = [100, 10, 10, 0.5, 0.2, 10]
         self.trainer = None
+        self.world = None
 
     def on_startup(self, ext_id):
 
@@ -53,6 +53,9 @@ class MinimalViewportExtension(omni.ext.IExt):
         return
 
     def start_training(self):
+
+        self.world = Environment()
+
         print("[UI] Scheduling training start on next frame...")
 
         omni.timeline.get_timeline_interface().play()
@@ -69,7 +72,7 @@ class MinimalViewportExtension(omni.ext.IExt):
             self._training_subscription.unsubscribe()
             self._training_subscription = None
 
-        self.bittle = Bittle()
+        bittle = Bittle()
 
         try:
             params = [
@@ -81,7 +84,7 @@ class MinimalViewportExtension(omni.ext.IExt):
                 self.distance_to_goal_slider.model.get_value_as_float(),
             ]
 
-            self.trainer = train(params, self.bittle)
+            self.trainer = train(params, bittle, self.world)
             print("[MinimalViewportExtension] Launching training with:", params)
             self.trainer.start()
 

@@ -13,9 +13,14 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3 import PPO
 
-from GymWrapper import gym_env
+
+from isaacsim import SimulationApp
+simulation_app = SimulationApp({"headless": False})  # start the simulation app, with GUI open
+
+from .world import Environment
+from .GymWrapper import gym_env
 from gymnasium.wrappers import TimeLimit
-from Bittle import Bittle
+from .Bittle import Bittle
 
 class train():
 
@@ -45,5 +50,8 @@ class train():
 if __name__ == "__main__":
     w=Environment()
     b=Bittle()
+    print("done",flush=True)
+    # while simulation_app.is_running():
+    #     simulation_app.update()
     t=train([100,10,10,0.5,0.2,10],b,w) 
     t.start()
