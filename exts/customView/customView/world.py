@@ -1,7 +1,3 @@
-
-from isaacsim import SimulationApp
-simulation_app = SimulationApp({"headless": False})  # start the simulation app, with GUI open
-
 import time
 import numpy as np
 from isaacsim.core.api import World
@@ -46,14 +42,15 @@ class Environment:
             time.sleep(0.05)
 
     def get_valid_positions_on_terrain(self, n_samples=10):
+        
+        ground_prim = get_prim_at_path(self.grnd_plane)
+        mesh_prim = ground_prim.GetChild("geom")
 
-        mesh_prim = get_prim_at_path(self.grnd_plane + "/CollisionMesh")
-        if not mesh_prim:
-            raise ValueError(f"No prim found at path: {self.grnd_plane}/CollisionMesh")
+        # if mesh_prim.GetTypeName() != "CollissionPlane":
+        #     raise RuntimeError(f"Expected Mesh prim, got: {mesh_prim.GetTypeName()} at {mesh_prim.GetPath()}")
 
         mesh = UsdGeom.Mesh(mesh_prim)
-        points_attr = mesh.GetPointsAttr()
-        points = points_attr.Get()
+        points = mesh.GetPointsAttr().Get()
 
         if not points:
             raise RuntimeError("Mesh points attribute could not be read.")
@@ -61,17 +58,17 @@ class Environment:
         point_array = np.array([[p[0], p[1], p[2]] for p in points])
         min_bounds = np.min(point_array, axis=0)
         max_bounds = np.max(point_array, axis=0)
-
         z_const = min_bounds[2]
 
-        positions = []
-        for _ in range(n_samples):
-            x = np.random.uniform(min_bounds[0], max_bounds[0])
-            y = np.random.uniform(min_bounds[1], max_bounds[1])
-            positions.append((x, y, z_const))
+        positions = [
+            (np.random.uniform(min_bounds[0], max_bounds[0]),
+            np.random.uniform(min_bounds[1], max_bounds[1]),
+            z_const)
+            for _ in range(n_samples)
+        ]
 
         return positions
-
+    
     def set_grnd_coeffs(self):
 
         ground_prim = self.stage.GetPrimAtPath(self.grnd_plane)
