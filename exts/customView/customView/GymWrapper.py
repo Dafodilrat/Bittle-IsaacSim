@@ -139,7 +139,7 @@ class gym_env(gymnasium.Env):
             self.goals.remove(self.current_goal)
         
         else:
-            self.goals = self.bittle.get_valid_positions_on_terrain()
+            self.goals = self.environment.get_valid_positions_on_terrain()
         
 
         self.current_goal = self.goals[np.random.choice(len(self.goals))]

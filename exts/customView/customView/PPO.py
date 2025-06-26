@@ -12,46 +12,41 @@ if sb3_path not in sys.path:
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3 import PPO
-
-
-from isaacsim import SimulationApp
-simulation_app = SimulationApp({"headless": False})  # start the simulation app, with GUI open
-
-from .world import Environment
-from .GymWrapper import gym_env
+from stable_baselines3.common.callbacks import BaseCallback
 from gymnasium.wrappers import TimeLimit
-from .Bittle import Bittle
 
-class train():
+from .GymWrapper import gym_env
 
-    def __init__(self,params, bittle, env):
-        
-        env = gym_env(bittle = bittle ,env=env ,weights = params)
-        
-        # check_env(env)                                      
+class StopCallback(BaseCallback):
+    def __init__(self, trainer_ref, verbose=0):
+        super().__init__(verbose)
+        self.trainer_ref = trainer_ref  # This should be a reference to the PPO instance
+
+    def _on_step(self) -> bool:
+        # Stop training when the flag is set
+        return not self.trainer_ref.should_stop
+
+class stb3_PPO():
+
+    def __init__(self, params, bittle, env):
+        env = gym_env(bittle=bittle, env=env, weights=params)
         env = DummyVecEnv([lambda: TimeLimit(env, max_episode_steps=500)])
 
         self.model = PPO(
-            policy="MlpPolicy",         # Use multilayer perceptron
-            env = env,                    # Your wrapped Gym env
-            verbose = 1,                  # Show training info
-            tensorboard_log="./ppo_logs",  # Optional
+            policy="MlpPolicy",
+            env=env,
+            verbose=1,
+            tensorboard_log="./ppo_logs",
             device="cpu"
         )
+        self.should_stop = False  # <-- This is the mutable flag used by the callback
 
-    def start(self):
-
+    def start_training(self):
         print("starting the training loop", flush=True)
-        # callback = StopCallback(should_stop_fn=stop_fn)
-        self.model.learn(total_timesteps=1_000_000)
+        callback = StopCallback(trainer_ref=self)
+        self.model.learn(total_timesteps=1_000_000, callback=callback)
         self.model.save("ppo_bittle")
-    
 
-if __name__ == "__main__":
-    w=Environment()
-    b=Bittle()
-    print("done",flush=True)
-    # while simulation_app.is_running():
-    #     simulation_app.update()
-    t=train([100,10,10,0.5,0.2,10],b,w) 
-    t.start()
+    def stop_training(self):
+        print("Training stop requested.")
+        self.should_stop = True
