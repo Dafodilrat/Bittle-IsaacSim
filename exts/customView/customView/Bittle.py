@@ -1,48 +1,34 @@
 from isaacsim.core.utils.prims import is_prim_path_valid, get_prim_at_path
 from isaacsim.core.prims import Articulation
 from isaacsim.core.api import World
-from isaacsim.sensors.physics import _sensor
-from pxr import UsdGeom, Sdf
+from isaacsim.sensors.physics import _sensor  
+from isaacsim.core.utils.stage import add_reference_to_stage
+from isaacsim.sensors.physics import IMUSensor
+from pxr import UsdPhysics, PhysxSchema
+from omni.kit.commands import execute
+from omni.isaac.core import SimulationContext
+
+from pxr import UsdGeom, Sdf, Gf
 from scipy.spatial.transform import Rotation as R
 import time
 import numpy as np
 
 class Bittle():
 
-    def __init__(self):
+    def __init__(self,cords,id):
         
-        self.robot_prim = "/World/bittle"
+        self.robot_prim = "/World/bittle"+str(id)
         self.world = World(stage_units_in_meters=1.0)
-        self.wait_for_prim(self.robot_prim)
-        self.reset()
-    
-    def reset(self):
-        
-        # Wait for prims
-
-
-        prim = get_prim_at_path(self.robot_prim)
-        if not prim.HasAttribute("articulation:root"):
-            attr = prim.CreateAttribute("articulation:root", Sdf.ValueTypeNames.Bool)
-            attr.Set(True)
-            print("Marked as articulation root")
-        else:
-            print("Already has articulation:root =", prim.GetAttribute("articulation:root").Get())
-
-        # simulation_view = tensors.create_simulation_view("torch")
-        # articulation_view = simulation_view.create_articulation_view("/world/bittle*")
-
-        # Safe physics init
-        # self.sim.initialize_physics()
-        # phy = SimulationManager.get_physics_sim_view()
-        # print("physics :",phy)
-        # print("device :",SimulationManager.get_physics_sim_device())
-        
+        self.spawn_cords = cords
+        self.spawn_bittle()
         self.world.reset()
         self.robot_view = Articulation(self.robot_prim)
         self.robot_view.initialize()
+        
+    def reset(self):
 
-        self.world.reset()
+        self.respawn_bittle()
+        self.wait_for_prim(self.robot_prim)
         self.enforce_vel_limits()
 
         print("Simulation started")
@@ -104,6 +90,75 @@ class Bittle():
                 attr = joint_prim.CreateAttribute("physics:joint:velocityLimit", Sdf.ValueTypeNames.Float)
             attr.Set(90.0)
             print(f"Enforced velocity limit on {name}")
+
+    def spawn_bittle(self):
+
+        usd_path = "/home/dafodilrat/Documents/bu/RASTIC" \
+        "/isaac-sim-standalone@4.5.0-rc.36+release.19112.f59b3005.gl.linux-x86_64.release" \
+        "/alpha/Bittle_URDF/bittle/bittle.usd"
+        
+        imu_path = self.robot_prim + "/base_frame_link/Imu_Sensor"
+
+        # Add robot to the stage if it's not already present
+        if not is_prim_path_valid(self.robot_prim):
+            print(f"[Bittle] Referencing robot from {usd_path}")
+            add_reference_to_stage(usd_path=usd_path, prim_path=self.robot_prim)
+            self.wait_for_prim(self.robot_prim)
+        
+        prim = get_prim_at_path(self.robot_prim)
+
+        if not prim.HasAttribute("articulation:root"):
+            attr = prim.CreateAttribute("articulation:root", Sdf.ValueTypeNames.Bool)
+            attr.Set(True)
+            print("[Bittle] Marked as articulation root")
+        else:
+            print("[Bittle] Already has articulation:root =", prim.GetAttribute("articulation:root").Get())
+
+        # UsdPhysics.ArticulationRootAPI.Apply(prim)
+        # PhysxSchema.PhysxArticulationAPI.Apply(prim)
+
+        x, y, z = self.spawn_cords
+        xform = UsdGeom.Xformable(prim)
+        xform.ClearXformOpOrder()
+        xform.AddTranslateOp().Set(Gf.Vec3d(x, y, 1))
+
+        # Check if IMU exists
+        if is_prim_path_valid(imu_path):
+            print(f"[IMU] Found existing IMU at {imu_path}")
+        else:
+            print(f"[IMU] IMU not found at {imu_path}. Creating...")
+
+            # Create IMU sensor prim
+            imu_sensor = self.world.scene.add(
+                IMUSensor(
+                    prim_path=imu_path,
+                    name="imu",
+                    frequency=60,
+                    translation=np.array([0, 0, 0]),  
+                )
+            )
+
+        self.wait_for_prim(imu_path)
+    
+    def respawn_bittle(self):
+        n,_,_ = self.get_robot_dof()
+
+        self.robot_view.set_joint_positions(np.zeros(n))
+        self.robot_view.set_joint_velocities(np.zeros(n))
+            
+        self.robot_view.set_world_poses(positions = [self.spawn_cords], orientations = [[1, 0, 0, 0]])
+        
+        # prim = get_prim_at_path(self.robot_prim)
+        
+        # x, y, z = self.spawn_cords
+        # xform = UsdGeom.Xformable(prim)
+        # xform.ClearXformOpOrder()
+        # xform.AddTranslateOp().Set(Gf.Vec3d(x, y, 1))
+
+
+        
+        
+
 
 
 if __name__ == "__main__":
