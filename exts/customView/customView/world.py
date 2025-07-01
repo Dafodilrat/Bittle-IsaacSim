@@ -28,35 +28,50 @@ class Environment:
         self.bitlles_count = 0
         self.bittlles = []
         self.spawn_points = []
+        self.stage = get_current_stage()
 
         while is_stage_loading():
             print("Waiting for stage to finish loading...")
             time.sleep(0.1)
-        
-        self.stage = get_current_stage()
-
-        self.create_colored_dome_light()
 
         if not is_prim_path_valid(self.physics):
             UsdPhysics.Scene.Define(self.stage, self.physics)
             print("Added physics scene", flush=True)
+    
+        self.world = World(stage_units_in_meters=1.0)
+        self.world.reset()
+        #self.world.play()
 
-        # self.physics_ctx = PhysicsContext()
-
-        # sim = SimulationContext()
-
-        # ⏱️ Timeout while waiting for physics sim view to initialize
-        # t0 = time.time()
-        # while sim.physics_sim_view is None:
-        #     if time.time() - t0 > 3.0:
-        #         raise RuntimeError("TimeoutPhysics: Physics sim view failed to initialize.")
-        #     print("Waiting for physics sim view to initialize...")
-        #     time.sleep(0.1)
+        self.create_colored_dome_light()
 
         grnd = GroundPlane(prim_path=self.grnd_plane, size=10, color=np.array([0.5, 0.5, 0.5]),z_position = 0) 
         self.wait_for_prim(self.grnd_plane)
         self.set_grnd_coeffs()
+        self.wait_for_physics()
         self.get_valid_positions_on_terrain()
+
+    def wait_for_physics(self,timeout=5.0):
+        
+        """
+        Wait for SimulationContext's physics context and sim view to be ready.
+
+        Args:
+            timeout (float): Maximum time to wait in seconds.
+
+        Raises:
+            RuntimeError: If physics sim view or context are not initialized in time.
+        """
+
+        sim = SimulationContext()
+        t0 = time.time()
+        while sim.physics_sim_view is None or sim._physics_context is None:
+            if time.time() - t0 > timeout:
+                raise RuntimeError("Timeout waiting for physics sim view and context to initialize.")
+            print("[Env] Waiting for physics...", flush=True)
+            # sim = SimulationContext()
+            time.sleep(0.1)
+        
+        return
 
     def wait_for_prim(self, path, timeout=5.0):
         t0 = time.time()
@@ -116,7 +131,7 @@ class Environment:
             cord = pts[np.random.choice(len(pts))]
             self.spawn_points.append(cord)
 
-            b = Bittle(id = idx, cords = cord)
+            b = Bittle(id = idx, cords = cord, world = self.world)
 
             self.bittlles.append(b)
 

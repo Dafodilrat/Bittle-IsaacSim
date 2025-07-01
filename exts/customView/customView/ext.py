@@ -2,9 +2,11 @@ import omni.ext
 import omni.ui as ui
 import omni.kit.app
 import omni.timeline
+import omni.usd
+from isaacsim.core.utils.stage import get_current_stage, open_stage
+from omni.isaac.core.simulation_context import SimulationContext
 
-from .Bittle import Bittle
-from .PPO import train
+from .PPO import stb3_PPO
 from .world import Environment
 
 class MinimalViewportExtension(omni.ext.IExt):
@@ -18,11 +20,6 @@ class MinimalViewportExtension(omni.ext.IExt):
         self.world = None
 
     def on_startup(self, ext_id):
-
-        stage_path = "/home/dafodilrat/Documents/bu/RASTIC/rl_world.usd"
-        omni.usd.get_context().open_stage(stage_path)
-        # print("Stage path:", omni.usd.get_context().get_stage_path())
-
 
         print("[MinimalViewportExtension] Starting up")
 
@@ -39,8 +36,10 @@ class MinimalViewportExtension(omni.ext.IExt):
                 self.joint_velocity_slider = self.make_slider("High Joint Velocity Penalty", 0, 5, 0.1, 0.2)
                 self.distance_to_goal_slider = self.make_slider("Distance to Goal Penalty", 0, 50, 1, 10)
 
-                ui.Button("Start Training", clicked_fn=self.start_training)
+                self._start_button = ui.Button("Start Training", clicked_fn=self.start_training, enabled=True)
                 ui.Button("Stop Training", clicked_fn=self.stop_training)
+
+        
 
     def make_slider(self, label_text, min_val, max_val, step, default):
         ui.Label(label_text)
@@ -49,12 +48,19 @@ class MinimalViewportExtension(omni.ext.IExt):
         return slider
 
     def stop_training(self):
-        print("[MinimalViewportExtension] Training stopped (placeholder)")
-        return
+        print("[MinimalViewportExtension] Training stopped.")
+        if self.trainer is not None:
+            self.trainer.stop_training()  # Stop training via callback-safe stop
+            self.trainer = None
+        if self.world is not None:
+            print("[MinimalViewportExtension] Resetting world.")
+            self.world.reset()
+
+        self.on_startup("reinit")
 
     def start_training(self):
 
-        self.world = Environment()
+        self.env = Environment()
 
         print("[UI] Scheduling training start on next frame...")
 
@@ -65,33 +71,37 @@ class MinimalViewportExtension(omni.ext.IExt):
         )
 
     def _delayed_start_once(self, event):
-        
+
         print("[DELAYED] Creating Bittle and starting training.")
 
         if self._training_subscription:
             self._training_subscription.unsubscribe()
             self._training_subscription = None
 
-        bittle = Bittle()
+        n = 1
+        self.env.add_bittles(n = n)
 
-        try:
-            params = [
-                self.correct_posture_slider.model.get_value_as_float(),
-                self.smooth_bonus_slider.model.get_value_as_float(),
-                self.incorrect_posture_slider.model.get_value_as_float(),
-                self.jerking_penalty_slider.model.get_value_as_float(),
-                self.joint_velocity_slider.model.get_value_as_float(),
-                self.distance_to_goal_slider.model.get_value_as_float(),
-            ]
+        params = [
+            self.correct_posture_slider.model.get_value_as_float(),
+            self.smooth_bonus_slider.model.get_value_as_float(),
+            self.incorrect_posture_slider.model.get_value_as_float(),
+            self.jerking_penalty_slider.model.get_value_as_float(),
+            self.joint_velocity_slider.model.get_value_as_float(),
+            self.distance_to_goal_slider.model.get_value_as_float(),
+        ]
 
-            self.trainer = train(params, bittle, self.world)
-            print("[MinimalViewportExtension] Launching training with:", params)
-            self.trainer.start()
+        SimulationContext().play()
 
-        except Exception as e:
-            import traceback
-            print("Error launching training:", e)
-            traceback.print_exc()
+        t=stb3_PPO(params = [100,10,10,0.5,0.2,10],bittle = self.env.bittlles[0],env = self.env) 
+
+        print("[MinimalViewportExtension] Launching training with:", params)
+
+        t.start_training()
+
+        # except Exception as e:
+        #     import traceback
+        #     print("Error launching training:", e)
+        #     traceback.print_exc()
 
     def on_shutdown(self):
         print("[MinimalViewportExtension] Shutting down...")
@@ -100,3 +110,8 @@ class MinimalViewportExtension(omni.ext.IExt):
             self._window = None
         self.bittle = None
         self._training_subscription = None
+        if self.trainer is not None:
+            self.trainer = None
+        if self.world is not None:
+            print("[MinimalViewportExtension] Resetting world on shutdown.")
+            self.world.reset()

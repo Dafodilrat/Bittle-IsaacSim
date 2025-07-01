@@ -6,7 +6,8 @@ from isaacsim.core.utils.stage import add_reference_to_stage
 from isaacsim.sensors.physics import IMUSensor
 from pxr import UsdPhysics, PhysxSchema
 from omni.kit.commands import execute
-from omni.isaac.core import SimulationContext
+from omni.isaac.core.physics_context import PhysicsContext
+from omni.isaac.core.simulation_context import SimulationContext
 
 from pxr import UsdGeom, Sdf, Gf
 from scipy.spatial.transform import Rotation as R
@@ -15,16 +16,17 @@ import numpy as np
 
 class Bittle():
 
-    def __init__(self,cords,id):
+    def __init__(self,cords,id,world):
         
         self.robot_prim = "/World/bittle"+str(id)
-        self.world = World(stage_units_in_meters=1.0)
+        self.world = world
         self.spawn_cords = cords
         self.spawn_bittle()
         self.world.reset()
+        # self.wait_for_physics()
         self.robot_view = Articulation(self.robot_prim)
         self.robot_view.initialize()
-        
+
     def reset(self):
 
         self.respawn_bittle()
@@ -74,6 +76,25 @@ class Bittle():
 
     def reset_simulation(self):
         self.reset()
+
+    def wait_for_physics(self, timeout=10.0):
+        """
+        Wait for SimulationContext's physics context and sim view to be ready.
+
+        Args:
+            timeout (float): Maximum time to wait in seconds.
+
+        Raises:
+            RuntimeError: If physics sim view or context are not initialized in time.
+        """
+        sim = SimulationContext()
+        t0 = time.time()
+        while sim.physics_sim_view is None or sim._physics_context is None:
+            if time.time() - t0 > timeout:
+                raise RuntimeError("Timeout waiting for physics sim view and context to initialize.")
+            print("[Bittle] Waiting for physics...", flush=True)
+            time.sleep(0.1)
+        return
 
     def enforce_vel_limits(self):
 
