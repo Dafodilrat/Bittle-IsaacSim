@@ -47,7 +47,7 @@ class Environment:
         grnd = GroundPlane(prim_path=self.grnd_plane, size=10, color=np.array([0.5, 0.5, 0.5]),z_position = 0) 
         self.wait_for_prim(self.grnd_plane)
         self.set_grnd_coeffs()
-        self.wait_for_physics()
+        # self.wait_for_physics()
         self.get_valid_positions_on_terrain()
 
     def wait_for_physics(self,timeout=5.0):
