@@ -44,8 +44,15 @@ class stb3_PPO():
     def start_training(self):
         print("starting the training loop", flush=True)
         callback = StopCallback(trainer_ref=self)
-        self.model.learn(total_timesteps=1_000_000, callback=callback)
-        self.model.save("ppo_bittle")
+
+        try:
+            self.model.learn(total_timesteps=1_000_000, callback=callback)
+            self.model.save("ppo_bittle")
+        except Exception as e:
+            import traceback
+            print("[TRAINING ERROR] Exception during training:", e)
+            traceback.print_exc()
+            self.should_stop = True
 
     def stop_training(self):
         print("Training stop requested.")

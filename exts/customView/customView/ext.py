@@ -3,11 +3,13 @@ import omni.ui as ui
 import omni.kit.app
 import omni.timeline
 import omni.usd
-from isaacsim.core.utils.stage import get_current_stage, open_stage
+from isaacsim.core.utils.stage import get_current_stage
 from omni.isaac.core.simulation_context import SimulationContext
 
+import traceback
 from .PPO import stb3_PPO
 from .world import Environment
+
 
 class MinimalViewportExtension(omni.ext.IExt):
 
@@ -18,9 +20,9 @@ class MinimalViewportExtension(omni.ext.IExt):
         self.default_weights = [100, 10, 10, 0.5, 0.2, 10]
         self.trainer = None
         self.world = None
+        self.env = None
 
     def on_startup(self, ext_id):
-
         print("[MinimalViewportExtension] Starting up")
 
         self._window = ui.Window("RL Training Panel", width=500, height=900)
@@ -39,8 +41,6 @@ class MinimalViewportExtension(omni.ext.IExt):
                 self._start_button = ui.Button("Start Training", clicked_fn=self.start_training, enabled=True)
                 ui.Button("Stop Training", clicked_fn=self.stop_training)
 
-        
-
     def make_slider(self, label_text, min_val, max_val, step, default):
         ui.Label(label_text)
         slider = ui.FloatSlider(min=min_val, max=max_val, step=step)
@@ -50,38 +50,18 @@ class MinimalViewportExtension(omni.ext.IExt):
     def stop_training(self):
         print("[MinimalViewportExtension] Training stopped.")
         if self.trainer is not None:
-            self.trainer.stop_training()  # Stop training via callback-safe stop
+            self.trainer.stop_training()
             self.trainer = None
-        if self.world is not None:
+        if self.env is not None:
             print("[MinimalViewportExtension] Resetting world.")
-            self.world.reset()
+            self.env.reset()
 
         self.on_startup("reinit")
 
     def start_training(self):
-
-        self.env = Environment()
-
         print("[UI] Scheduling training start on next frame...")
 
-        omni.timeline.get_timeline_interface().play()
-
-        self._training_subscription = omni.kit.app.get_app().get_update_event_stream().create_subscription_to_pop(
-            self._delayed_start_once
-        )
-
-    def _delayed_start_once(self, event):
-
-        print("[DELAYED] Creating Bittle and starting training.")
-
-        if self._training_subscription:
-            self._training_subscription.unsubscribe()
-            self._training_subscription = None
-
-        n = 1
-        self.env.add_bittles(n = n)
-
-        params = [
+        self._train_params = [
             self.correct_posture_slider.model.get_value_as_float(),
             self.smooth_bonus_slider.model.get_value_as_float(),
             self.incorrect_posture_slider.model.get_value_as_float(),
@@ -89,29 +69,50 @@ class MinimalViewportExtension(omni.ext.IExt):
             self.joint_velocity_slider.model.get_value_as_float(),
             self.distance_to_goal_slider.model.get_value_as_float(),
         ]
+        self._train_count = 1
 
-        SimulationContext().play()
+        # Defer to next frame to ensure stage + physics is ready
+        self._training_subscription = omni.kit.app.get_app().get_update_event_stream().create_subscription_to_pop(
+            self._delayed_start_once
+        )
 
-        t=stb3_PPO(params = [100,10,10,0.5,0.2,10],bittle = self.env.bittlles[0],env = self.env) 
+    def _delayed_start_once(self, _):
+        if self._training_subscription:
+            self._training_subscription.unsubscribe()
+            self._training_subscription = None
 
-        print("[MinimalViewportExtension] Launching training with:", params)
+        try:
+            print("[Delayed Start] Initializing environment and launching training...")
 
-        t.start_training()
+            Environment.destroy()
+            
+            self.env = Environment()
+            self.env.add_bittles(n=self._train_count)
 
-        # except Exception as e:
-        #     import traceback
-        #     print("Error launching training:", e)
-        #     traceback.print_exc()
+            SimulationContext().play()
+
+            self.trainer = stb3_PPO(
+                params=self._train_params,
+                bittle=self.env.bittlles[0],
+                env=self.env
+            )
+
+            print("[MinimalViewportExtension] Launching training with:", self._train_params)
+            self.trainer.start_training()
+
+        except Exception as e:
+            print("[EXTENSION ERROR] Exception during training:", e)
+            traceback.print_exc()
+            omni.timeline.get_timeline_interface().stop()
 
     def on_shutdown(self):
         print("[MinimalViewportExtension] Shutting down...")
         if self._window:
             self._window.destroy()
             self._window = None
-        self.bittle = None
         self._training_subscription = None
         if self.trainer is not None:
             self.trainer = None
-        if self.world is not None:
+        if self.env is not None:
             print("[MinimalViewportExtension] Resetting world on shutdown.")
-            self.world.reset()
+            self.env.reset()

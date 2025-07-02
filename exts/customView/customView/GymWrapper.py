@@ -74,6 +74,7 @@ class gym_env(gymnasium.Env):
 
     def step(self,action):
 
+        
         self.bittle.set_robot_action(action)
         
         self.observations = self.bittle.get_robot_observation()

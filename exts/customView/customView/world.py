@@ -8,7 +8,11 @@ from isaacsim.core.api.objects.ground_plane import GroundPlane
 from isaacsim.core.prims import RigidPrim
 from isaacsim.core.utils.stage import is_stage_loading
 from omni.isaac.core.simulation_context import SimulationContext
+from omni.kit.async_engine import run_coroutine
+
 from .Bittle import Bittle
+
+import omni.usd
 
 class Environment:
     _instance = None
@@ -28,50 +32,81 @@ class Environment:
         self.bitlles_count = 0
         self.bittlles = []
         self.spawn_points = []
-        self.stage = get_current_stage()
+        self.stage = None
+        self.context = None
+        self.clear_stage() 
+        #physics_prim_path = self.physics
+        self.context = SimulationContext()
+        run_coroutine(self.context.initialize_simulation_context_async())
+        # self.wait_for_physics_ready()
+        
+        # self.wait_for_prim(self.physics)
 
-        while is_stage_loading():
-            print("Waiting for stage to finish loading...")
-            time.sleep(0.1)
+        self.world = World(stage_units_in_meters=1.0,physics_prim_path = self.physics,set_defaults=True)
 
-        if not is_prim_path_valid(self.physics):
-            UsdPhysics.Scene.Define(self.stage, self.physics)
-            print("Added physics scene", flush=True)
-    
-        self.world = World(stage_units_in_meters=1.0)
+        print("[ENV] physics context at :",self.world.get_physics_context(),flush=True)
+        
+        print(self.world.physics_sim_view,flush=True)
+        
         self.world.reset()
-        #self.world.play()
 
-        self.create_colored_dome_light()
+        self.world.play()
 
-        grnd = GroundPlane(prim_path=self.grnd_plane, size=10, color=np.array([0.5, 0.5, 0.5]),z_position = 0) 
-        self.wait_for_prim(self.grnd_plane)
         self.set_grnd_coeffs()
         # self.wait_for_physics()
         self.get_valid_positions_on_terrain()
 
-    def wait_for_physics(self,timeout=5.0):
-        
-        """
-        Wait for SimulationContext's physics context and sim view to be ready.
+    @classmethod
+    def destroy(cls):
+        """Manually clears the singleton instance"""
+        cls._instance = None
+    
+    def clear_stage(self):
+        # Create a new empty USD stage
+        omni.usd.get_context().new_stage()
+        self.stage = omni.usd.get_context().get_stage()
 
-        Args:
-            timeout (float): Maximum time to wait in seconds.
-
-        Raises:
-            RuntimeError: If physics sim view or context are not initialized in time.
-        """
-
-        sim = SimulationContext()
-        t0 = time.time()
-        while sim.physics_sim_view is None or sim._physics_context is None:
-            if time.time() - t0 > timeout:
-                raise RuntimeError("Timeout waiting for physics sim view and context to initialize.")
-            print("[Env] Waiting for physics...", flush=True)
-            # sim = SimulationContext()
+        # Wait for stage load
+        while is_stage_loading():
+            print("[Environment] Waiting for stage to finish loading", flush=True)
             time.sleep(0.1)
+
+        # Define /World root Xform (required for Isaac Sim to function correctly)
+        if not is_prim_path_valid("/World"):
+            self.stage.DefinePrim("/World", "Xform")
+        self.stage.SetDefaultPrim(self.stage.GetPrimAtPath("/World"))
+        self.wait_for_prim("/World")
+
+        # Define physics scene
+        if not is_prim_path_valid(self.physics):
+            UsdPhysics.Scene.Define(self.stage, self.physics)
+            print("[Environment] Added physics scene", flush=True)
         
-        return
+        self.wait_for_prim(self.physics)
+
+        # Add dome light similar to default startup
+        self.create_colored_dome_light()
+
+        # Add ground plane
+        if not is_prim_path_valid(self.grnd_plane):
+            GroundPlane(prim_path=self.grnd_plane, size=10, color=np.array([0.5, 0.5, 0.5]), z_position=0)
+        self.wait_for_prim(self.grnd_plane)
+
+        print("[Environment] Stage reset complete. Default Isaac Sim-like world initialized.")
+
+    
+    def wait_for_physics_ready(self, timeout=5.0):
+        app = omni.kit.app.get_app()
+        t0 = time.time()
+        while True:
+            physics_ready = self.context.physics_sim_view is not None and self.context._physics_context is not None
+            if physics_ready:
+                break
+            if time.time() - t0 > timeout:
+                raise RuntimeError("Timeout waiting for physics to initialize.")
+            print("[Environment] Waiting for physics context...", flush=True)
+            app.update()
+            time.sleep(0.01)
 
     def wait_for_prim(self, path, timeout=5.0):
         t0 = time.time()
@@ -131,9 +166,15 @@ class Environment:
             cord = pts[np.random.choice(len(pts))]
             self.spawn_points.append(cord)
 
-            b = Bittle(id = idx, cords = cord, world = self.world)
+            try:
+                b = Bittle(id = idx, cords = cord, world = self.world)
+                self.bittlles.append(b)
+            
+            except Exception as e:
+                import traceback
+                print("[Environment] Error adding bittle", e)
+                traceback.print_exc()
 
-            self.bittlles.append(b)
 
     def create_colored_dome_light(self,path="/Environment/DomeLight", color=(0.5, 0.5, 1.0), intensity=5000.0):
 

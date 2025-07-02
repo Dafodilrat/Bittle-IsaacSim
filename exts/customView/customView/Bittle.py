@@ -1,8 +1,8 @@
 from isaacsim.core.utils.prims import is_prim_path_valid, get_prim_at_path
-from isaacsim.core.prims import Articulation
+from isaacsim.core.prims import Articulation, SingleArticulation
 from isaacsim.core.api import World
 from isaacsim.sensors.physics import _sensor  
-from isaacsim.core.utils.stage import add_reference_to_stage
+from isaacsim.core.utils.stage import add_reference_to_stage, get_current_stage
 from isaacsim.sensors.physics import IMUSensor
 from pxr import UsdPhysics, PhysxSchema
 from omni.kit.commands import execute
@@ -13,6 +13,7 @@ from pxr import UsdGeom, Sdf, Gf
 from scipy.spatial.transform import Rotation as R
 import time
 import numpy as np
+from sympy import true
 
 class Bittle():
 
@@ -23,6 +24,9 @@ class Bittle():
         self.spawn_cords = cords
         self.spawn_bittle()
         self.world.reset()
+        # ph = PhysicsContext(prim_path = "/World/PhysicsScene")
+        # print("[BITTLE] ",ph.get_current_physics_scene_prim(),flush=True)
+        # print("[BITTLE] initializing bittle object "+self.robot_prim,flush=True)
         # self.wait_for_physics()
         self.robot_view = Articulation(self.robot_prim)
         self.robot_view.initialize()
@@ -77,7 +81,7 @@ class Bittle():
     def reset_simulation(self):
         self.reset()
 
-    def wait_for_physics(self, timeout=10.0):
+    def wait_for_physics(self, timeout=5.0):
         """
         Wait for SimulationContext's physics context and sim view to be ready.
 
@@ -87,9 +91,10 @@ class Bittle():
         Raises:
             RuntimeError: If physics sim view or context are not initialized in time.
         """
-        sim = SimulationContext()
+        sim = SimulationContext(physics_prim_path="/World/PhysicsScene")
         t0 = time.time()
         while sim.physics_sim_view is None or sim._physics_context is None:
+            sim.initialize_physics()
             if time.time() - t0 > timeout:
                 raise RuntimeError("Timeout waiting for physics sim view and context to initialize.")
             print("[Bittle] Waiting for physics...", flush=True)
@@ -121,10 +126,14 @@ class Bittle():
         imu_path = self.robot_prim + "/base_frame_link/Imu_Sensor"
 
         # Add robot to the stage if it's not already present
-        if not is_prim_path_valid(self.robot_prim):
-            print(f"[Bittle] Referencing robot from {usd_path}")
-            add_reference_to_stage(usd_path=usd_path, prim_path=self.robot_prim)
-            self.wait_for_prim(self.robot_prim)
+        if is_prim_path_valid(self.robot_prim):
+
+            self.remove_prim_at_path(self.robot_prim)
+        
+        print(f"[Bittle] Referencing robot from {usd_path}")
+        add_reference_to_stage(usd_path=usd_path, prim_path=self.robot_prim)
+        
+        self.wait_for_prim(self.robot_prim)
         
         prim = get_prim_at_path(self.robot_prim)
 
@@ -135,21 +144,16 @@ class Bittle():
         else:
             print("[Bittle] Already has articulation:root =", prim.GetAttribute("articulation:root").Get())
 
-        # UsdPhysics.ArticulationRootAPI.Apply(prim)
-        # PhysxSchema.PhysxArticulationAPI.Apply(prim)
-
         x, y, z = self.spawn_cords
         xform = UsdGeom.Xformable(prim)
         xform.ClearXformOpOrder()
         xform.AddTranslateOp().Set(Gf.Vec3d(x, y, 1))
 
-        # Check if IMU exists
         if is_prim_path_valid(imu_path):
             print(f"[IMU] Found existing IMU at {imu_path}")
         else:
             print(f"[IMU] IMU not found at {imu_path}. Creating...")
 
-            # Create IMU sensor prim
             imu_sensor = self.world.scene.add(
                 IMUSensor(
                     prim_path=imu_path,
@@ -168,14 +172,16 @@ class Bittle():
         self.robot_view.set_joint_velocities(np.zeros(n))
             
         self.robot_view.set_world_poses(positions = [self.spawn_cords], orientations = [[1, 0, 0, 0]])
-        
-        # prim = get_prim_at_path(self.robot_prim)
-        
-        # x, y, z = self.spawn_cords
-        # xform = UsdGeom.Xformable(prim)
-        # xform.ClearXformOpOrder()
-        # xform.AddTranslateOp().Set(Gf.Vec3d(x, y, 1))
 
+    def remove_prim_at_path(prim_path):
+        
+        stage = get_current_stage()
+        
+        if stage.GetPrimAtPath(prim_path).IsValid():
+            print(f"Removing prim at: {prim_path}")
+            stage.RemovePrim(prim_path)
+        else:
+            print(f"No valid prim at: {prim_path}")
 
         
         
