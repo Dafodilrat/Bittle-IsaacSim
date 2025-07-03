@@ -6,6 +6,8 @@ from PyQt5.QtCore import Qt
 import subprocess
 import json
 import sys
+import signal
+import os 
 
 class RLParamInputGUI(QWidget):
     def __init__(self):
@@ -79,34 +81,31 @@ class RLParamInputGUI(QWidget):
             with open("params.json", "w") as f:
                 json.dump(param_dict, f, indent=2)
 
-            isaac_python_sh = "/home/dafodilrat/Documents/bu/RASTIC/isaac-sim-standalone@4.5.0-rc.36+release.19112.f59b3005.gl.linux-x86_64.release/python.sh"
-            launch_script = "/home/dafodilrat/Documents/bu/RASTIC/isaac-sim-standalone@4.5.0-rc.36+release.19112.f59b3005.gl.linux-x86_64.release/alpha/exts/customView/customView/test.py"
+            isaac_root = "/home/dafodilrat/Documents/bu/RASTIC/isaac-sim-standalone@4.5.0-rc.36+release.19112.f59b3005.gl.linux-x86_64.release"
+            setup_script = f"{isaac_root}/python.sh"
+            python_bin = f"{isaac_root}/kit/python/bin/python3"
+            train_script = f"{isaac_root}/alpha/exts/customView/customView/test.py"
 
-            self.proc = subprocess.Popen([
-                isaac_python_sh,
-                launch_script,
-                "--/renderer/activeGpu=1",
-                "--/app/window/enableMenuBar=False",
-                "--/app/window/enableBrowser=False",
-                "--/app/window/enableLayout=False",
-                "--/app/window/enableExtensions=False",
-                "--/app/window/showStatusBar=False",
-                "--no-window=False"
-            ])
+            self.proc = subprocess.Popen(
+                [setup_script, train_script],
+                preexec_fn=os.setsid  # Launches in a new session
+            )
+
         except Exception as e:
             QMessageBox.critical(self, "Execution Error", f"Unexpected error: {e}")
 
     def stopTrainer(self):
         if self.proc and self.proc.poll() is None:
             try:
-                self.proc.send_signal(signal.SIGINT)
-                self.proc.terminate()
+                os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
                 self.proc.wait(timeout=5)
-                QMessageBox.information(self, "Stopped", "Training process terminated.")
+                QMessageBox.information(self, "Training Stopped", "Isaac Sim was terminated.")
             except Exception as e:
-                QMessageBox.critical(self, "Stop Error", f"Could not terminate process: {e}")
+                QMessageBox.critical(self, "Stop Error", f"Failed to terminate Isaac Sim: {e}")
         else:
-            QMessageBox.information(self, "No Process", "No active training process to stop.")
+            QMessageBox.information(self, "No Active Process", "There is no running Isaac Sim process.")
+
+
 
 if __name__ == "__main__":
     
