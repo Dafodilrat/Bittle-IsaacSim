@@ -15,7 +15,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 from gymnasium.wrappers import TimeLimit
 
-from .GymWrapper import gym_env
+from GymWrapper import gym_env
 
 class StopCallback(BaseCallback):
     def __init__(self, trainer_ref, verbose=0):

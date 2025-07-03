@@ -9,7 +9,7 @@ from omni.isaac.core.simulation_context import SimulationContext
 import traceback
 from .PPO import stb3_PPO
 from .world import Environment
-
+from time import time
 
 class MinimalViewportExtension(omni.ext.IExt):
 
@@ -77,20 +77,47 @@ class MinimalViewportExtension(omni.ext.IExt):
         )
 
     def _delayed_start_once(self, _):
+
         if self._training_subscription:
             self._training_subscription.unsubscribe()
             self._training_subscription = None
 
         try:
             print("[Delayed Start] Initializing environment and launching training...")
-
+            
+            # Destroy previous instance
             Environment.destroy()
             
+            # Make sure timeline is stopped before creating new environment
+            timeline = omni.timeline.get_timeline_interface()
+            if timeline.is_playing():
+                timeline.stop()
+                
+            # Wait a moment for timeline to stop
+            app = omni.kit.app.get_app()
+            for _ in range(10):  # Wait up to 1 second
+                app.update()
+                if not timeline.is_playing():
+                    break
+                time.sleep(0.1)
+            
+            # Create environment (this will handle physics initialization)
             self.env = Environment()
+            
+            # Add Bittles
             self.env.add_bittles(n=self._train_count)
-
-            SimulationContext().play()
-
+            
+            # Start timeline/simulation AFTER everything is set up
+            timeline.play()
+            
+            # Wait for simulation to actually start
+            for _ in range(20):  # Wait up to 2 seconds
+                app.update()
+                if timeline.is_playing():
+                    break
+                time.sleep(0.1)
+            
+            # Now start training
             self.trainer = stb3_PPO(
                 params=self._train_params,
                 bittle=self.env.bittlles[0],
@@ -102,9 +129,10 @@ class MinimalViewportExtension(omni.ext.IExt):
 
         except Exception as e:
             print("[EXTENSION ERROR] Exception during training:", e)
+            import traceback
             traceback.print_exc()
+            # Stop timeline on error
             omni.timeline.get_timeline_interface().stop()
-
     def on_shutdown(self):
         print("[MinimalViewportExtension] Shutting down...")
         if self._window:

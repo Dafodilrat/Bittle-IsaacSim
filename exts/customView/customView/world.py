@@ -10,7 +10,7 @@ from isaacsim.core.utils.stage import is_stage_loading
 from omni.isaac.core.simulation_context import SimulationContext
 from omni.kit.async_engine import run_coroutine
 
-from .Bittle import Bittle
+from Bittle import Bittle
 
 import omni.usd
 
@@ -27,39 +27,99 @@ class Environment:
             return
 
         self._initialized = True
-        self.physics = "/World/PhysicsScene"
+        self.physics = "/World/PhysicsScene"  
         self.grnd_plane = "/World/GroundPlane"
         self.bitlles_count = 0
         self.bittlles = []
         self.spawn_points = []
         self.stage = None
         self.context = None
-        self.clear_stage() 
-        #physics_prim_path = self.physics
-        self.context = SimulationContext()
-        run_coroutine(self.context.initialize_simulation_context_async())
-        # self.wait_for_physics_ready()
+        self.world = None
         
-        # self.wait_for_prim(self.physics)
+        # Initialize in proper order for Kit extensions
+        self.setup_stage_and_physics()
 
         self.world = World(stage_units_in_meters=1.0,physics_prim_path = self.physics,set_defaults=True)
 
-        print("[ENV] physics context at :",self.world.get_physics_context(),flush=True)
+        physics_ctx = PhysicsContext(prim_path=self.physics)
         
-        print(self.world.physics_sim_view,flush=True)
+        print("[ENV] physics context at :",self.world.get_physics_context(),flush=True)
         
         self.world.reset()
 
         self.world.play()
 
-        self.set_grnd_coeffs()
-        # self.wait_for_physics()
-        self.get_valid_positions_on_terrain()
+        print(self.world.physics_sim_view,flush=True)
 
     @classmethod
     def destroy(cls):
         """Manually clears the singleton instance"""
         cls._instance = None
+
+    def setup_stage_and_physics(self):
+        
+        """Proper initialization sequence for Kit extensions"""
+        print("[ENV] Setting up stage and physics for Kit extension...")
+        
+        # Clear and setup stage
+        self.clear_stage()
+        
+        # Wait for stage to be ready
+        self.wait_for_stage_ready()
+        
+        # Initialize SimulationContext (don't use async in extensions)
+        self.context = SimulationContext(physics_prim_path=self.physics)
+        
+        # Wait for physics context to be ready
+        self.wait_for_physics_context()
+        
+        # Initialize World
+        self.world = World(
+            stage_units_in_meters=1.0,
+            physics_prim_path=self.physics,
+            set_defaults=True
+        )
+        
+        # Setup ground properties
+        self.set_grnd_coeffs()
+        self.get_valid_positions_on_terrain()
+        
+        print("[ENV] Environment initialization complete!")
+
+    def wait_for_stage_ready(self, timeout=10.0):
+        """Wait for stage to be properly loaded"""
+        app = omni.kit.app.get_app()
+        timeline = omni.timeline.get_timeline_interface()
+        
+        t0 = time.time()
+        while is_stage_loading() or not timeline:
+            if time.time() - t0 > timeout:
+                raise RuntimeError("Timeout waiting for stage to be ready")
+            print("[ENV] Waiting for stage...", flush=True)
+            app.update()
+            time.sleep(0.1)
+            
+    def wait_for_physics_context(self, timeout=10.0):
+        """Wait for physics context to initialize properly"""
+        app = omni.kit.app.get_app()
+        t0 = time.time()
+        
+        while True:
+            # Force app update to process physics initialization
+            app.update()
+            
+            # Check if context is ready
+            if (self.context and 
+                hasattr(self.context, '_physics_context') and 
+                self.context._physics_context is not None):
+                print("[ENV] Physics context ready!")
+                break
+                
+            if time.time() - t0 > timeout:
+                raise RuntimeError("Timeout waiting for physics context")
+                
+            print("[ENV] Waiting for physics context...", flush=True)
+            time.sleep(0.1)
     
     def clear_stage(self):
         # Create a new empty USD stage
@@ -93,20 +153,6 @@ class Environment:
         self.wait_for_prim(self.grnd_plane)
 
         print("[Environment] Stage reset complete. Default Isaac Sim-like world initialized.")
-
-    
-    def wait_for_physics_ready(self, timeout=5.0):
-        app = omni.kit.app.get_app()
-        t0 = time.time()
-        while True:
-            physics_ready = self.context.physics_sim_view is not None and self.context._physics_context is not None
-            if physics_ready:
-                break
-            if time.time() - t0 > timeout:
-                raise RuntimeError("Timeout waiting for physics to initialize.")
-            print("[Environment] Waiting for physics context...", flush=True)
-            app.update()
-            time.sleep(0.01)
 
     def wait_for_prim(self, path, timeout=5.0):
         t0 = time.time()
