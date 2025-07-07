@@ -150,16 +150,13 @@ class RLParamInputGUI(QWidget):
         # (-0.445, -0.519, -0.021),
         joint_labels = {
             "Left back shoulder":   (110, 50, 150),
+            "Left back knee":   (110, 15, 115),
             "Right back shoulder":   (-1, 55, 165),
+            "Right back knee":   (-5, 20, 130),
             "Right front shoulder":   (20, 50, 270),
+            "Right front knee":   (13, 20, 235),
             "Left front shoulder":   (130, 50, 250),
-            # "left_back_knee":       (-0.445, -0.519, -0.512),
-            # "left_front_shoulder":  (-0.445,  0.522, -0.021),
-            # "left_front_knee":      (-0.445,  0.522, -0.512),
-            # "right_back_shoulder":  ( 0.451, -0.519, -0.021),
-            # "right_back_knee":      ( 0.491, -0.519, -0.520),
-            # "right_front_shoulder": ( 0.451,  0.522, -0.021),
-            # "right_front_knee":     ( 0.491,  0.522, -0.520),
+            "Left front knee":   (130, 10, 235),
         }
 
         for name, pos in joint_labels.items():
