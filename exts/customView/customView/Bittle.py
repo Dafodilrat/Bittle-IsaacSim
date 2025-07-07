@@ -30,6 +30,7 @@ class Bittle():
         # self.wait_for_physics()
         self.robot_view = Articulation(self.robot_prim)
         self.robot_view.initialize()
+        self.lock_mask = np.zeros(self.robot_view.num_dof, dtype=bool)
 
     def reset(self):
 
@@ -51,6 +52,7 @@ class Bittle():
         # if getattr(self.sim, "_physics_context", None) is None:
         #     print("[Warning] Physics not ready")
         #     return
+        action[self.lock_mask] = 0.0
         self.robot_view.set_joint_positions(action)
         self.world.step(render=True)
 
@@ -70,6 +72,7 @@ class Bittle():
         return pos[0], [roll, pitch, yaw]
 
     def get_robot_observation(self):
+
         pos, ori = self.get_curr_robot_pose()
         angles = self.robot_view.get_joint_positions()[0]
         vel = self.robot_view.get_joint_velocities()[0]
@@ -183,8 +186,15 @@ class Bittle():
         else:
             print(f"No valid prim at: {prim_path}")
 
+    def get_joint_name_angle(self):
+
+        joint_names = self.robot_view.dof_names
+        joint_angles = self.robot_view.get_joint_positions()[0]
+        return dict(zip(joint_names, joint_angles))
         
-        
+    def lock_joints(self,joints):
+
+        self.lock_mask = joints
 
 
 
