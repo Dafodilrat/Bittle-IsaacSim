@@ -28,8 +28,10 @@ class StopCallback(BaseCallback):
 
 class stb3_PPO():
 
-    def __init__(self, params, bittle, env):
-        env = gym_env(bittle=bittle, env=env, weights=params)
+    def __init__(self, weights, bittle, env, joints):
+        
+        env = gym_env(bittle=bittle, env=env, weights=weights, joints=joints)
+        
         env = DummyVecEnv([lambda: TimeLimit(env, max_episode_steps=500)])
 
         self.model = PPO(
