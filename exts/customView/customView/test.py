@@ -1,11 +1,8 @@
-
 from isaacsim import SimulationApp
-simulation_app = SimulationApp({"headless": False})  # start the simulation app, with GUI open
+simulation_app = SimulationApp({"headless": False})  # GUI-enabled
 
-from isaacsim import SimulationApp
 from PPO import stb3_PPO
 from world import Environment
-
 import json
 import os
 
@@ -17,7 +14,10 @@ if __name__ == "__main__":
         raise FileNotFoundError(f"Parameter file '{param_file}' not found.")
 
     with open(param_file, "r") as f:
-        param_dict = json.load(f)
+        config = json.load(f)
+
+    param_dict = config["params"]
+    joint_states = config.get("joint_states")  # default to empty if not provided
 
     # Maintain the order expected by PPO
     ordered_keys = [
@@ -29,11 +29,8 @@ if __name__ == "__main__":
         "Distance to Goal Penalty"
     ]
 
-    # Scale ×10 values back to normal
-    params = []
-    for key in ordered_keys:
-        value = param_dict[key]
-        params.append(value)
+    # Scale ×10 values already handled in GUI, so no need to rescale here
+    weights = [param_dict[k] for k in ordered_keys]
 
     # --- Initialize environment and agents ---
     agents = []
@@ -44,7 +41,8 @@ if __name__ == "__main__":
     print("Environment setup complete.", flush=True)
 
     for bittle in w.bittlles:
-        t = stb3_PPO(params=params, bittle=bittle, env=w)
+        
+        t = stb3_PPO(weights=weights, bittle=bittle, env=w, joints=joint_states)
         agents.append(t)
 
     for agent in agents:
