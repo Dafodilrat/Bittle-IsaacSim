@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-    QMessageBox, QSlider, QApplication, QFrame
+    QMessageBox, QSlider, QApplication, QFrame, QCheckBox
 )
 from PyQt5.QtCore import Qt
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
@@ -55,8 +55,6 @@ class DragRotateInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
             interactor.Render()
 
 
-
-
 class RLParamInputGUI(QWidget):
     def __init__(self):
         super().__init__()
@@ -74,13 +72,63 @@ class RLParamInputGUI(QWidget):
         self.labels = []
         self.proc = None
         self.isaac_root = "/home/dafodilrat/Documents/bu/RASTIC/isaac-sim-standalone@4.5.0-rc.36+release.19112.f59b3005.gl.linux-x86_64.release"
+        
+        self.joint_labels = {
+            "Left back shoulder":   (20, 50, 270),
+            "Left back knee":   (13, 20, 235),
+            "Left front shoulder":   (-1, 55, 165),
+            "Left front knee":   (-5, 20, 130),
+            "Right back shoulder":   (130, 50, 250),
+            "Right back knee":   (130, 10, 235),
+            "Right front shoulder":   (110, 50, 150),
+            "Right front knee":   (110, 15, 115),
+        }
+
+        self.joint_checkboxes = []
         self.initUI()
 
     def initUI(self):
         main_layout = QHBoxLayout()
 
-        # === Left Panel: Parameter Sliders ===
-        control_layout = QVBoxLayout()
+        # === Left Panel: Parameter Sliders, Buttons, Checkboxes ===
+        self.control_layout = QVBoxLayout()
+
+        self.initSliders()   
+        self.initJointLocks()
+        self.initButtons()  
+
+        main_layout.addLayout(self.control_layout)  # <--- Move this here
+
+        # === Right Panel: VTK STL Viewer ===
+        vtk_frame = QFrame()
+        vtk_layout = QVBoxLayout()
+        self.vtk_widget = QVTKRenderWindowInteractor(vtk_frame)
+        vtk_layout.addWidget(self.vtk_widget)
+        vtk_frame.setLayout(vtk_layout)
+        main_layout.addWidget(vtk_frame)
+
+        self.setLayout(main_layout)
+        self.init_vtk()
+    
+
+    def initButtons(self):
+
+        train_btn = QPushButton("Start Training")
+        train_btn.clicked.connect(self.startTrainer)
+        self.control_layout.addWidget(train_btn)
+
+        stop_btn = QPushButton("Stop Training")
+        stop_btn.clicked.connect(self.stopTrainer)
+        self.control_layout.addWidget(stop_btn)
+
+    def initSliders(self):
+        
+        header = QLabel("Training Parameters")          
+        header.setStyleSheet("font-weight: bold; font-size: 14pt;")
+        header.setContentsMargins(0, 3, 0, 3)  # Left, Top, Right, Bottom
+
+        self.control_layout.addWidget(header)
+
         for label_text, min_val, max_val, default in self.param_defs:
             hbox = QHBoxLayout()
             label = QLabel(f"{label_text}: {default / 10.0 if 'x10' in label_text else default}")
@@ -101,28 +149,22 @@ class RLParamInputGUI(QWidget):
 
             self.labels.append(label)
             self.sliders.append(slider)
-            control_layout.addLayout(hbox)
+            self.control_layout.addLayout(hbox)
 
-        train_btn = QPushButton("Start Training")
-        train_btn.clicked.connect(self.startTrainer)
-        control_layout.addWidget(train_btn)
 
-        stop_btn = QPushButton("Stop Training")
-        stop_btn.clicked.connect(self.stopTrainer)
-        control_layout.addWidget(stop_btn)
+    def initJointLocks(self):
+        
+        header = QLabel("Select Joints To Lock")          
+        header.setStyleSheet("font-weight: bold; font-size: 14pt;")
+        header.setContentsMargins(0, 3, 0, 3)  # Left, Top, Right, Bottom
 
-        main_layout.addLayout(control_layout)
-
-        # === Right Panel: VTK STL Viewer ===
-        vtk_frame = QFrame()
-        vtk_layout = QVBoxLayout()
-        self.vtk_widget = QVTKRenderWindowInteractor(vtk_frame)
-        vtk_layout.addWidget(self.vtk_widget)
-        vtk_frame.setLayout(vtk_layout)
-        main_layout.addWidget(vtk_frame)
-
-        self.setLayout(main_layout)
-        self.init_vtk()
+        self.control_layout.addWidget(header)
+        
+        for joint in self.joint_labels.keys():
+            checkbox = QCheckBox(joint)
+            checkbox.setChecked(False)
+            self.joint_checkboxes.append(checkbox)
+            self.control_layout.addWidget(checkbox)
 
     def init_vtk(self):
         self.renderer = vtk.vtkRenderer()
@@ -148,18 +190,8 @@ class RLParamInputGUI(QWidget):
         # Joint label coordinates (in STL coordinate frame)
         # Joint label coordinates (in STL coordinate frame)
         # (-0.445, -0.519, -0.021),
-        joint_labels = {
-            "Left back shoulder":   (110, 50, 150),
-            "Left back knee":   (110, 15, 115),
-            "Right back shoulder":   (-1, 55, 165),
-            "Right back knee":   (-5, 20, 130),
-            "Right front shoulder":   (20, 50, 270),
-            "Right front knee":   (13, 20, 235),
-            "Left front shoulder":   (130, 50, 250),
-            "Left front knee":   (130, 10, 235),
-        }
 
-        for name, pos in joint_labels.items():
+        for name, pos in self.joint_labels.items():
             # --- Create the text ---
             text_src = vtk.vtkVectorText()
             text_src.SetText(name.replace("_", " "))
@@ -200,8 +232,7 @@ class RLParamInputGUI(QWidget):
             self.interactor.SetInteractorStyle(style)
 
             self.interactor.Initialize()
-            self.interactor.Start()
-
+            # self.interactor.Start()
 
     def startTrainer(self):
         try:
@@ -219,8 +250,15 @@ class RLParamInputGUI(QWidget):
                 for (name, *_), val in zip(self.param_defs, values)
             }
 
+            joint_states = {
+                cb.text(): cb.isChecked() for cb in self.joint_checkboxes
+            }
+
             with open("params.json", "w") as f:
-                json.dump(param_dict, f, indent=2)
+                json.dump({
+                    "params": param_dict,
+                    "joint_states": joint_states
+                }, f, indent=2)
 
             setup_script = f"{self.isaac_root}/python.sh"
             train_script = f"{self.isaac_root}/alpha/exts/customView/customView/test.py"
