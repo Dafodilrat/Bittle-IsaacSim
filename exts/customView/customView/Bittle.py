@@ -30,7 +30,6 @@ class Bittle():
         # self.wait_for_physics()
         self.robot_view = Articulation(self.robot_prim)
         self.robot_view.initialize()
-        self.lock_mask = np.zeros(self.robot_view.num_dof, dtype=bool)
 
     def reset(self):
 
@@ -48,11 +47,7 @@ class Bittle():
             time.sleep(0.05)
 
     def set_robot_action(self, action):
-        # Optional: uncomment if step still crashes
-        # if getattr(self.sim, "_physics_context", None) is None:
-        #     print("[Warning] Physics not ready")
-        #     return
-        action[self.lock_mask] = 0.0
+
         self.robot_view.set_joint_positions(action)
         self.world.step(render=True)
 
@@ -63,6 +58,7 @@ class Bittle():
         return num_dofs, limits[:, 0], limits[:, 1]
 
     def get_curr_robot_pose(self):
+
         imu = _sensor.acquire_imu_sensor_interface()
         imu_data = imu.get_sensor_reading(self.robot_prim + "/base_frame_link/Imu_Sensor")
         quat = imu_data.orientation
@@ -185,16 +181,13 @@ class Bittle():
             stage.RemovePrim(prim_path)
         else:
             print(f"No valid prim at: {prim_path}")
+    
+    def get_joint_names(self):
+        """
+        Return the list of joint names in the order used by get_robot_dof() and set_robot_action().
+        """
+        return self.robot_view.dof_names
 
-    def get_joint_name_angle(self):
-
-        joint_names = self.robot_view.dof_names
-        joint_angles = self.robot_view.get_joint_positions()[0]
-        return dict(zip(joint_names, joint_angles))
-        
-    def lock_joints(self,joints):
-
-        self.lock_mask = joints
 
 
 
