@@ -5,16 +5,28 @@ from gymnasium import spaces
 import numpy as np
 
 class gym_env(gymnasium.Env):
-    
-    def __init__(self ,bittle ,env ,weights=[100,10,10,0.5,0.2,10]):
+    #[100,10,10,0.5,0.2,10]
+    def __init__(self, bittle, env, weights, joints={}):
 
         super().__init__()
 
         print("initializing isaac sim env .....",flush=True)
-        
-        self.weights = weights
 
         self.bittle = bittle
+
+        self.joint_lock_dict = joints or {}
+
+        # Build lock mask in the internal joint order
+        internal_joint_names = self.bittle.get_joint_names()
+        self.joint_lock_mask = np.array([
+            self.joint_lock_dict.get(name, False) for name in internal_joint_names
+        ], dtype=bool)
+
+        # Pass this to Bittle so it can apply locks directly
+        self.bittle.lock_mask = self.joint_lock_mask
+
+        
+        self.weights = weights
         
         dof,low,high = self.bittle.get_robot_dof()
         
@@ -58,7 +70,9 @@ class gym_env(gymnasium.Env):
     def generate_info(self):
            
         pos, orientation, joint_angles, joint_velocities = self.observations
-        
+        lst=self.bittle.get_joint_names()
+        joints = {x:self.joint_lock_dict[x] for x in lst}
+
         info = {}
         
         info["goal"]= self.current_goal
@@ -70,11 +84,14 @@ class gym_env(gymnasium.Env):
         info["total_reward"] = self.total_rewards
         info["distance_to_goal"] = np.linalg.norm(np.array(pos[:2]) - np.array(list(self.current_goal)[:2]))
         info["delta movement"] = self.delta
+        info["joint names"]= joints
         return info
 
     def step(self,action):
-
         
+        if self.joint_lock_mask.any():
+            action = np.where(self.joint_lock_mask, 0.0, action)
+
         self.bittle.set_robot_action(action)
         
         self.observations = self.bittle.get_robot_observation()
