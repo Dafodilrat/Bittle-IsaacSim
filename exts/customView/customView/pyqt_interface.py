@@ -73,15 +73,19 @@ class RLParamInputGUI(QWidget):
         self.proc = None
         self.isaac_root = "/home/dafodilrat/Documents/bu/RASTIC/isaac-sim-standalone@4.5.0-rc.36+release.19112.f59b3005.gl.linux-x86_64.release"
         
+        #['left_back_shoulder_joint', 'left_front_shoulder_joint', 'right_back_shoulder_joint', 'right_front_shoulder_joint',
+        #  left_back_knee_joint', 'left_front_knee_joint', 'right_back_knee_joint', 'right_front_knee_joint']
+
+
         self.joint_labels = {
-            "Left back shoulder":   (20, 50, 270),
-            "Left back knee":   (13, 20, 235),
-            "Left front shoulder":   (-1, 55, 165),
-            "Left front knee":   (-5, 20, 130),
-            "Right back shoulder":   (130, 50, 250),
-            "Right back knee":   (130, 10, 235),
-            "Right front shoulder":   (110, 50, 150),
-            "Right front knee":   (110, 15, 115),
+            "left_back_shoulder_joint":   (20, 50, 270),
+            "left_back_knee_joint":   (13, 20, 235),
+            "left_front_shoulder_joint":   (-1, 55, 165),
+            "left_front_knee_joint":   (-5, 20, 130),
+            "right_back_shoulder_joint":   (130, 50, 250),
+            "right_back_knee_joint":   (130, 10, 235),
+            "right_front_shoulder_joint":   (110, 50, 150),
+            "right_front_knee_joint":   (110, 15, 115),
         }
 
         self.joint_checkboxes = []
@@ -150,7 +154,6 @@ class RLParamInputGUI(QWidget):
             self.labels.append(label)
             self.sliders.append(slider)
             self.control_layout.addLayout(hbox)
-
 
     def initJointLocks(self):
         
