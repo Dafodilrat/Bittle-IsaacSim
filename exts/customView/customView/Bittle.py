@@ -1,12 +1,10 @@
 from isaacsim.core.utils.prims import is_prim_path_valid, get_prim_at_path
 from isaacsim.core.prims import Articulation, SingleArticulation
-from isaacsim.core.api import World
 from isaacsim.sensors.physics import _sensor  
 from isaacsim.core.utils.stage import add_reference_to_stage, get_current_stage
 from isaacsim.sensors.physics import IMUSensor
 from pxr import UsdPhysics, PhysxSchema
 from omni.kit.commands import execute
-from omni.isaac.core.physics_context import PhysicsContext
 from omni.isaac.core.simulation_context import SimulationContext
 
 from pxr import UsdGeom, Sdf, Gf
@@ -22,22 +20,24 @@ class Bittle():
         self.robot_prim = "/World/bittle"+str(id)
         self.world = world
         self.spawn_cords = cords
-        self.spawn_bittle()
-        self.world.reset()
+        self.robot_view = None
+        # self.spawn_bittle()
+        # self.world.reset()
         # ph = PhysicsContext(prim_path = "/World/PhysicsScene")
         # print("[BITTLE] ",ph.get_current_physics_scene_prim(),flush=True)
         # print("[BITTLE] initializing bittle object "+self.robot_prim,flush=True)
         # self.wait_for_physics()
-        self.robot_view = Articulation(self.robot_prim)
-        self.robot_view.initialize()
 
     def reset(self):
 
+        print("[Bittle] reset called", flush=True)
         self.respawn_bittle()
+        print("[Bittle] finished respawn_bittle()", flush=True)
         self.wait_for_prim(self.robot_prim)
+        print("[Bittle] finished wait_for_prim()", flush=True)
         self.enforce_vel_limits()
-
-        print("Simulation started")
+        print("[Bittle] finished enforce_vel_limits()", flush=True)
+        print("Simulation started", flush=True)
 
     def wait_for_prim(self, path, timeout=5.0):
         t0 = time.time()
@@ -49,7 +49,6 @@ class Bittle():
     def set_robot_action(self, action):
 
         self.robot_view.set_joint_positions(action)
-        self.world.step(render=True)
 
     def get_robot_dof(self):
         num_dofs = self.robot_view.num_dof
@@ -73,9 +72,6 @@ class Bittle():
         angles = self.robot_view.get_joint_positions()[0]
         vel = self.robot_view.get_joint_velocities()[0]
         return [pos, ori, angles, vel]
-
-    def is_running(self):
-        return self.world.is_playing()
 
     def reset_simulation(self):
         self.reset()
@@ -116,6 +112,11 @@ class Bittle():
             attr.Set(90.0)
             print(f"Enforced velocity limit on {name}")
 
+    def set_articulation(self):
+
+        self.robot_view = Articulation(self.robot_prim)
+        self.robot_view.initialize()
+
     def spawn_bittle(self):
 
         usd_path = "/home/dafodilrat/Documents/bu/RASTIC" \
@@ -147,32 +148,20 @@ class Bittle():
         xform = UsdGeom.Xformable(prim)
         xform.ClearXformOpOrder()
         xform.AddTranslateOp().Set(Gf.Vec3d(x, y, 1))
-
-        if is_prim_path_valid(imu_path):
-            print(f"[IMU] Found existing IMU at {imu_path}")
-        else:
-            print(f"[IMU] IMU not found at {imu_path}. Creating...")
-
-            imu_sensor = self.world.scene.add(
-                IMUSensor(
-                    prim_path=imu_path,
-                    name="imu",
-                    frequency=60,
-                    translation=np.array([0, 0, 0]),  
-                )
-            )
-
-        self.wait_for_prim(imu_path)
     
     def respawn_bittle(self):
-        n,_,_ = self.get_robot_dof()
-
+        print("[Bittle] respawn_bittle() entered", flush=True)
+        n, _, _ = self.get_robot_dof()
         self.robot_view.set_joint_positions(np.zeros(n))
         self.robot_view.set_joint_velocities(np.zeros(n))
-            
-        self.robot_view.set_world_poses(positions = [self.spawn_cords], orientations = [[1, 0, 0, 0]])
+        self.robot_view.set_world_poses(
+            positions=[self.spawn_cords],
+            orientations=[[1, 0, 0, 0]]
+        )
+        print("[Bittle] respawn_bittle() completed", flush=True)
 
-    def remove_prim_at_path(prim_path):
+
+    def remove_prim_at_path(self,prim_path):
         
         stage = get_current_stage()
         

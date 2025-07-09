@@ -27,28 +27,30 @@ class StopCallback(BaseCallback):
         return not self.trainer_ref.should_stop
 
 class stb3_PPO():
+    def __init__(self, gym_env):
 
-    def __init__(self, weights, bittle, env, joints):
-        
-        env = gym_env(bittle=bittle, env=env, weights=weights, joints=joints)
-        
-        env = DummyVecEnv([lambda: TimeLimit(env, max_episode_steps=500)])
+        def make_env():
+            return TimeLimit(
+                gym_env,    
+                max_episode_steps=500
+            )
 
         self.model = PPO(
             policy="MlpPolicy",
-            env=env,
-            verbose=1,
+            env=DummyVecEnv([make_env]),  # ✅ CORRECT
+            verbose=2,
             tensorboard_log="./ppo_logs",
             device="cpu"
         )
-        self.should_stop = False  # <-- This is the mutable flag used by the callback
-
+        self.should_stop = False
+    
     def start_training(self):
         print("starting the training loop", flush=True)
-        callback = StopCallback(trainer_ref=self)
 
         try:
-            self.model.learn(total_timesteps=1_000_000, callback=callback)
+            print("[PPO] calling model.learn()", flush=True)
+            self.model.learn(total_timesteps=1_000_000)
+            print("[PPO] learning finished", flush=True)
             self.model.save("ppo_bittle")
         except Exception as e:
             import traceback

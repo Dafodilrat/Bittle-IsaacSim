@@ -55,6 +55,13 @@ class Environment:
     def destroy(cls):
         """Manually clears the singleton instance"""
         cls._instance = None
+    
+    def is_running(self):
+        return self.world.is_playing()
+
+    def get_world(self):
+
+        return self.world
 
     def setup_stage_and_physics(self):
         
@@ -214,6 +221,11 @@ class Environment:
 
             try:
                 b = Bittle(id = idx, cords = cord, world = self.world)
+                b.spawn_bittle()
+                self.world.reset()
+                b.set_articulation()
+                self.world.step(render=True)
+                self.wait_for_stage_ready()
                 self.bittlles.append(b)
             
             except Exception as e:
