@@ -16,10 +16,14 @@ class MultiAgentTrainer:
 
         from world import Environment
         from PPO import PPOAgent
+        from Dp3d import DDPGAgent
 
         self.config_file = config_file
         self.Environment = Environment
-        self.PPOAgent = PPOAgent
+        self.agent_classes = {
+            "ppo": PPOAgent,
+            "dp3d": DDPGAgent,
+        }
         self.os = os
         self.json = json
         self.time = time
@@ -52,6 +56,7 @@ class MultiAgentTrainer:
 
         self.all_weights = config["params"]
         self.all_joint_states = config["joint_states"]
+        self.agent_algorithms = config.get("algorithms", ["ppo"] * len(self.all_weights))
         self.num_agents = config.get("num_agents", len(self.all_weights))
         self.steps_per_episode = config.get("steps_per_episode", self.steps_per_episode)
         self.num_episodes = config.get("num_episodes", self.num_episodes)
@@ -64,7 +69,13 @@ class MultiAgentTrainer:
         for i, bittle in enumerate(self.sim_env.bittlles):
             weights = self.all_weights[i]
             joint_states = self.all_joint_states[i] if i < len(self.all_joint_states) else {}
-            agent = self.PPOAgent(weights=weights, bittle=bittle, sim_env=self.sim_env, joint_states=joint_states)
+            algo = self.agent_algorithms[i].lower()
+
+            agent_class = self.agent_classes.get(algo)
+            if agent_class is None:
+                raise ValueError(f"Unsupported algorithm: {algo}")
+
+            agent = agent_class(weights=weights, bittle=bittle, sim_env=self.sim_env, joint_states=joint_states)
             obs, _ = agent.gym_env.reset()
             # agent.set_obs(obs)
             self.agents.append(agent)
@@ -89,6 +100,9 @@ class MultiAgentTrainer:
                     agent.train()
 
                 step_count += 1
+
+            for agent in self.agents:
+                agent.reset()
 
         print("Training complete.")
         for i, agent in enumerate(self.agents):
