@@ -84,6 +84,8 @@ class RLParamInputGUI(QWidget):
         }
 
         self.bittle_tabs = []
+        self.train_btn = None
+        self.stop_btn = None
         self.initUI()
 
     def initUI(self):
@@ -179,13 +181,21 @@ class RLParamInputGUI(QWidget):
         for i in range(self.agent_spinner.value()):
             joint_checkboxes = []
             sliders = []
-            
+
+            from PyQt5.QtWidgets import QComboBox
+            algo_combo = QComboBox()
+            algo_combo.addItems(["ppo", "dp3d"])
+
             tab = QWidget()
             vbox = QVBoxLayout()
 
-            header = QLabel("Training Parameters")          
-            header.setStyleSheet("font-weight: bold; font-size: 14pt;")
-            header.setContentsMargins(0, 3, 0, 3)  # Left, Top, Right, Bottom
+            header = QLabel("Algorithm Selection")
+            header.setStyleSheet("font-weight: bold; font-size: 12pt;")
+            vbox.addWidget(header)
+            vbox.addWidget(algo_combo)
+
+            header = QLabel("Training Parameters")
+            header.setStyleSheet("font-weight: bold; font-size: 12pt;")
             vbox.addWidget(header)
 
             for label_text, min_val, max_val, default in self.param_defs:
@@ -203,12 +213,10 @@ class RLParamInputGUI(QWidget):
                 vbox.addLayout(hbox)
                 sliders.append(slider)
 
+            header = QLabel("Lock Joints")
+            header.setStyleSheet("font-weight: bold; font-size: 12pt;")
+            vbox.addWidget(header)
             
-
-            header = QLabel("Lock Joints")          
-            header.setStyleSheet("font-weight: bold; font-size: 14pt;")
-            header.setContentsMargins(0, 3, 0, 3)  # Left, Top, Right, Bottom
-
             for joint in self.joint_labels.keys():
                 cb = QCheckBox(joint)
                 joint_checkboxes.append(cb)
@@ -216,34 +224,41 @@ class RLParamInputGUI(QWidget):
 
             tab.setLayout(vbox)
             self.tabs.addTab(tab, f"Bittle {i+1}")
-            self.bittle_tabs.append((sliders, joint_checkboxes))
+            self.bittle_tabs.append((sliders, joint_checkboxes, algo_combo))
+
 
     def get_config(self):
         all_weights = []
         all_joint_states = []
+        algorithms = []
 
-        for sliders, joint_checkboxes in self.bittle_tabs:
+        for sliders, joint_checkboxes, algo_combo in self.bittle_tabs:
             values = [s.value() for s in sliders]
             weights = [val / 10.0 if "x10" in label else val
-                       for (label, *_), val in zip(self.param_defs, values)]
+                    for (label, *_), val in zip(self.param_defs, values)]
             joints = {cb.text(): cb.isChecked() for cb in joint_checkboxes}
+            algo = algo_combo.currentText()
+
             all_weights.append(weights)
             all_joint_states.append(joints)
+            algorithms.append(algo)
 
         return {
             "params": all_weights,
             "joint_states": all_joint_states,
+            "algorithms": algorithms,
             "num_agents": self.agent_spinner.value()
         }
 
-    def initButtons(self):
-        train_btn = QPushButton("Start Training")
-        train_btn.clicked.connect(self.startTrainer)
-        self.control_layout.addWidget(train_btn)
 
-        stop_btn = QPushButton("Stop Training")
-        stop_btn.clicked.connect(self.stopTrainer)
-        self.control_layout.addWidget(stop_btn)
+    def initButtons(self):
+        self.train_btn = QPushButton("Start Training")
+        self.train_btn.clicked.connect(self.startTrainer)
+        self.control_layout.addWidget(self.train_btn)
+
+        self.stop_btn = QPushButton("Stop Training")
+        self.stop_btn.clicked.connect(self.stopTrainer)
+        self.control_layout.addWidget(self.stop_btn)
 
     def startTrainer(self):
         try:
@@ -259,8 +274,12 @@ class RLParamInputGUI(QWidget):
                 preexec_fn=os.setsid
             )
 
+            self.train_btn.setEnabled(False)   # 🔒 Disable Start
+            self.stop_btn.setEnabled(True)     # 🔓 Enable Stop
+
         except Exception as e:
             QMessageBox.critical(self, "Execution Error", f"Unexpected error: {e}")
+
 
     def stopTrainer(self):
         if self.proc and self.proc.poll() is None:
@@ -272,6 +291,10 @@ class RLParamInputGUI(QWidget):
                 QMessageBox.critical(self, "Stop Error", f"Failed to terminate Isaac Sim: {e}")
         else:
             QMessageBox.information(self, "No Active Process", "There is no running Isaac Sim process.")
+
+        self.train_btn.setEnabled(True)   # 🔓 Re-enable Start
+        self.stop_btn.setEnabled(False)   # 🔒 Disable Stop
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
