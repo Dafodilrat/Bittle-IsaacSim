@@ -4,7 +4,7 @@ import numpy as np
 from world import Environment
 
 class gym_env(gymnasium.Env):
-    
+
     def __init__(self, bittle, env, weights=[100, 10, 10, 0.5, 0.2, 10], joint_lock_dict=None):
         super().__init__()
 
@@ -43,17 +43,19 @@ class gym_env(gymnasium.Env):
         self.total_rewards = 0
         self.delta = 0
 
+        self._last_obs = None
+        self._last_reward = 0.0
+        self._last_done = False
+        self._last_info = {}
+
     def step(self, action):
-        # Apply action immediately
         print("[STEP] applying action:", action, flush=True)
         action = np.where(self.joint_lock_mask, 0.0, action)
         self.bittle.set_robot_action(action)
 
-        # Step physics externally, then call post_step() separately
-        return self._last_obs, self._last_reward, self._last_done, False, self._last_info
+        return self.get_previous_observation(), self._last_reward, self._last_done, False, self._last_info
 
     def post_step(self):
-        # Called after Isaac Sim world.step()
         self.observations = self.bittle.get_robot_observation()
         reward = self.calculate_reward(self.prev_action)
         done = self.is_terminated()
@@ -145,3 +147,9 @@ class gym_env(gymnasium.Env):
         self.prev_distance = dist_to_goal
 
         return reward
+
+    def get_previous_observation(self):
+        return self._last_obs
+
+    def get_current_observation(self):
+        return np.concatenate(self.bittle.get_robot_observation())
