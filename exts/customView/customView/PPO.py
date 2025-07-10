@@ -65,7 +65,8 @@ class PPOAgent:
 
         self.buffer.add(obs, action, reward, done, value, log_prob)
 
-
+    def reset(self):
+        self.obs, _ = self.gym_env.reset()
 
     def train_if_ready(self):
         """Train only if rollout buffer is full"""
