@@ -1,11 +1,6 @@
 import gymnasium
 from gymnasium import spaces
 import numpy as np
-
-import gymnasium
-from gymnasium import spaces
-import numpy as np
-
 from world import Environment
 
 class gym_env(gymnasium.Env):
@@ -15,13 +10,12 @@ class gym_env(gymnasium.Env):
 
         self.weights = weights
         self.bittle = bittle
-        self.environment = env 
-        print("[GymEnv] env type", type(env), flush=True)
+        self.environment = env
 
         self.joint_lock_dict = joint_lock_dict or {}
-        internal_joint_names = self.bittle.get_joint_names()
+        joint_names = self.bittle.get_joint_names()
         self.joint_lock_mask = np.array([
-            self.joint_lock_dict.get(name, False) for name in internal_joint_names
+            self.joint_lock_dict.get(name, False) for name in joint_names
         ], dtype=bool)
 
         dof, low, high = self.bittle.get_robot_dof()
@@ -41,47 +35,27 @@ class gym_env(gymnasium.Env):
             np.ones(dof) * 10.0,
         ])
         self.observation_space = spaces.Box(low=obs_low - 0.01, high=obs_high + 0.01, dtype=np.float64)
- 
+
         self.goals = self.environment.get_valid_positions_on_terrain()
         self.current_goal = self.goals[np.random.choice(len(self.goals))]
 
-        self.total_rewards = 0
-        self.observations = [[0, 0, 0], [0, 0, 0], [0] * dof, [0] * dof]
         self.prev_distance = 0
+        self.total_rewards = 0
         self.delta = 0
 
-        self._step_called = False
-        self._pending_action = None
-        self._last_obs = np.zeros_like(obs_low)
-        self._last_reward = 0.0
-        self._last_done = False
-        self._last_info = {}
-
     def step(self, action):
+        # Apply action immediately
+        print("[STEP] applying action:", action, flush=True)
+        action = np.where(self.joint_lock_mask, 0.0, action)
+        self.bittle.set_robot_action(action)
 
-        print("[STEP] ppo called step", flush=True)
-        print("[STEP] received action:", action, flush=True)
-
-        self._pending_action = action
-        self._step_called = True
+        # Step physics externally, then call post_step() separately
         return self._last_obs, self._last_reward, self._last_done, False, self._last_info
 
-    def apply_pending_action(self):
-        if self._pending_action is None:
-            print("[GymEnv] No action to apply", flush=True)
-            return
-
-        try:
-            print("[GymEnv] Applying action:", self._pending_action, flush=True)
-            action = np.where(self.joint_lock_mask, 0.0, self._pending_action)
-            self.bittle.set_robot_action(action)
-        except Exception as e:
-            print("[GymEnv] Failed to apply action:", e, flush=True)
-
-
     def post_step(self):
+        # Called after Isaac Sim world.step()
         self.observations = self.bittle.get_robot_observation()
-        reward = self.calculate_reward(self._pending_action)
+        reward = self.calculate_reward(self.prev_action)
         done = self.is_terminated()
         info = self.generate_info()
 
@@ -90,8 +64,36 @@ class gym_env(gymnasium.Env):
         self._last_done = done
         self._last_info = info
 
-        self._step_called = False
-        self._pending_action = None
+        return self._last_obs, reward, done, info
+
+    def reset(self, *, seed=None, options=None):
+        super().reset(seed=seed)
+
+        if len(self.goals) > 1:
+            self.goals.remove(self.current_goal)
+        else:
+            self.goals = self.environment.get_valid_positions_on_terrain()
+
+        self.current_goal = self.goals[np.random.choice(len(self.goals))]
+        self.bittle.reset_simulation()
+
+        self.prev_action = np.zeros_like(self.prev_action)
+        self.prev_distance = 0
+        self.total_rewards = 0
+        self.delta = 0
+
+        self.observations = self.bittle.get_robot_observation()
+        self._last_obs = np.concatenate(self.observations)
+        self._last_reward = 0.0
+        self._last_done = False
+        self._last_info = self.generate_info()
+        self._last_info["new"] = True
+
+        return self._last_obs, self._last_info
+
+    def is_terminated(self):
+        pos, *_ = self.observations
+        return np.linalg.norm(np.array(pos[:2]) - np.array(self.current_goal[:2])) < 0.1
 
     def generate_info(self):
         pos, orientation, joint_angles, joint_velocities = self.observations
@@ -101,48 +103,10 @@ class gym_env(gymnasium.Env):
             "orientation": orientation,
             "joint_angles": joint_angles,
             "joint_vel": joint_velocities,
-            "new": False,
             "total_reward": self.total_rewards,
             "distance_to_goal": np.linalg.norm(np.array(pos[:2]) - np.array(self.current_goal[:2])),
-            "delta movement": self.delta
+            "delta movement": self.delta,
         }
-
-    def is_terminated(self):
-        pos, *_ = self.observations
-        return np.linalg.norm(np.array(pos[:2]) - np.array(self.current_goal[:2])) < 0.1
-
-    def is_truncated(self):
-        return not self.env.is_running()
-
-    def reset(self, *, seed=None, options=None):
-   
-        print("[GymEnv] reset called", flush=True)
-        super().reset(seed=seed)
-
-        if len(self.goals) > 1:
-            self.goals.remove(self.current_goal)
-        else:
-            self.goals = self.environment.get_valid_positions_on_terrain()
-
-        self.current_goal = self.goals[np.random.choice(len(self.goals))]
-        print("[GymEnv] calling bittle.reset_simulation()", flush=True)
-        self.bittle.reset_simulation()
-        print("[GymEnv] finished reset_simulation()", flush=True)
-
-        dof, _, _ = self.bittle.get_robot_dof()
-        self.prev_action = np.zeros(dof, dtype=np.float32)
-        self.total_rewards = 0
-        self.prev_distance = 0
-        self.delta = 0
-
-        self.observations = self.bittle.get_robot_observation()
-        self._last_obs = np.concatenate(self.observations)
-
-        info = self.generate_info()
-        info["new"] = True
-
-        print("------------------RESET---------------------")
-        return self._last_obs, info
 
     def calculate_reward(self, action):
         pos, orientation, joint_angles, joint_velocities = self.observations
