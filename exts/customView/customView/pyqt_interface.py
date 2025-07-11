@@ -247,11 +247,17 @@ class RLParamInputGUI(QWidget):
             "params": all_weights,
             "joint_states": all_joint_states,
             "algorithms": algorithms,
-            "num_agents": self.agent_spinner.value()
+            "num_agents": self.agent_spinner.value(),
+            "headless": self.headless_checkbox.isChecked()
         }
 
 
     def initButtons(self):
+
+        self.headless_checkbox = QCheckBox("Run in Headless Mode")
+        self.headless_checkbox.setChecked(False)  # Default: unchecked
+        self.control_layout.addWidget(self.headless_checkbox)
+
         self.train_btn = QPushButton("Start Training")
         self.train_btn.clicked.connect(self.startTrainer)
         self.control_layout.addWidget(self.train_btn)
