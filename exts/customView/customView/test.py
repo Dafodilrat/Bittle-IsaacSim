@@ -1,37 +1,37 @@
 from omni.isaac.kit import SimulationApp
+import os
+import json
+import time
 
 class MultiAgentTrainer:
     def __init__(self, config_file="params.json", headless=False):
+        
+        self.config_file = config_file
+        self.agents = []
+        self.sim_env = None
+        self.steps_per_episode = 500
+        self.num_episodes = 100
+        
+        self.load_config()
+
         self.sim_app = SimulationApp({
-            "headless": headless,
+            "headless": self.headless,
             "hide_ui": True,
             "window_width": 1280,
             "window_height": 720,
             "width": 1280,
             "height": 720
         })
-        import os
-        import json
-        import time
 
         from world import Environment
         from PPO import PPOAgent
         from Dp3d import DDPGAgent
 
-        self.config_file = config_file
         self.Environment = Environment
         self.agent_classes = {
             "ppo": PPOAgent,
             "dp3d": DDPGAgent,
         }
-        self.os = os
-        self.json = json
-        self.time = time
-
-        self.agents = []
-        self.sim_env = None
-        self.steps_per_episode = 500
-        self.num_episodes = 100
 
     def wait_for_stage_ready(self, timeout=10.0):
         import omni.kit.app
@@ -39,20 +39,20 @@ class MultiAgentTrainer:
         app = omni.kit.app.get_app()
         timeline = omni.timeline.get_timeline_interface()
 
-        t0 = self.time.time()
+        t0 = time.time()
         while is_stage_loading() or not timeline:
-            if self.time.time() - t0 > timeout:
+            if time.time() - t0 > timeout:
                 raise RuntimeError("Timeout waiting for stage to be ready")
             print("[ENV] Waiting for stage...", flush=True)
             app.update()
-            self.time.sleep(0.1)
+            time.sleep(0.1)
 
     def load_config(self):
-        if not self.os.path.exists(self.config_file):
+        if not os.path.exists(self.config_file):
             raise FileNotFoundError(f"Parameter file '{self.config_file}' not found.")
 
         with open(self.config_file, "r") as f:
-            config = self.json.load(f)
+            config = json.load(f)
 
         self.all_weights = config["params"]
         self.all_joint_states = config["joint_states"]
@@ -60,6 +60,7 @@ class MultiAgentTrainer:
         self.num_agents = config.get("num_agents", len(self.all_weights))
         self.steps_per_episode = config.get("steps_per_episode", self.steps_per_episode)
         self.num_episodes = config.get("num_episodes", self.num_episodes)
+        self.headless = config.get("headless", False)
 
     def setup_environment_and_agents(self):
         self.sim_env = self.Environment()
@@ -110,6 +111,5 @@ class MultiAgentTrainer:
 
 if __name__ == "__main__":
     trainer = MultiAgentTrainer()
-    trainer.load_config()
     trainer.setup_environment_and_agents()
     trainer.train()
