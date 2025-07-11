@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  bittle:
+    image: bittle-rl
+    build:
+      context: .  # Adjust if your Dockerfile is in a subfolder
+      dockerfile: Dockerfile
+    container_name: bittle-sim
+    network_mode: "host"  # Needed for DISPLAY access on Linux
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - $HOME/.Xauthority:/root/.Xauthority:rw
+    runtime: nvidia  # For older Docker versions. Use "deploy" below for modern compose
+    stdin_open: true
+    tty: true
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    entrypoint: ["/entrypoint.sh"]
