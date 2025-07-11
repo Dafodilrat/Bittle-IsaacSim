@@ -3,7 +3,7 @@ import numpy as np
 import sys
 import os
 
-sb3_path = "/home/dafodilrat/Documents/bu/RASTIC/isaac-sim-standalone@4.5.0-rc.36+release.19112.f59b3005.gl.linux-x86_64.release/kit/python/lib/python3.10/site-packages"
+sb3_path =  os.environ.get("ISAACSIM_PATH")+"/kit/python/lib/python3.10/site-packages"
 if sb3_path not in sys.path:
     sys.path.append(sb3_path)
     print("Manually added stable-baselines3 path to sys.path")

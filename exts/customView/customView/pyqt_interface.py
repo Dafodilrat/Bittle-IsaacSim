@@ -62,7 +62,7 @@ class RLParamInputGUI(QWidget):
         super().__init__()
         self.setWindowTitle("RL Multi-Agent Parameter GUI")
 
-        self.isaac_root = "/home/dafodilrat/Documents/bu/RASTIC/isaac-sim-standalone@4.5.0-rc.36+release.19112.f59b3005.gl.linux-x86_64.release"
+        self.isaac_root = os.environ.get("ISAACSIM_PATH")
         self.default_weights = [100, 10, 10, 5, 2, 10]
         self.param_defs = [
             ("Correct Posture Bonus", 0, 100, self.default_weights[0]),

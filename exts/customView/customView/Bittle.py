@@ -7,6 +7,7 @@ from pxr import UsdPhysics, PhysxSchema
 from omni.kit.commands import execute
 from omni.isaac.core.simulation_context import SimulationContext
 
+import os
 from pxr import UsdGeom, Sdf, Gf
 from scipy.spatial.transform import Rotation as R
 import time
@@ -119,9 +120,7 @@ class Bittle():
 
     def spawn_bittle(self):
 
-        usd_path = "/home/dafodilrat/Documents/bu/RASTIC" \
-        "/isaac-sim-standalone@4.5.0-rc.36+release.19112.f59b3005.gl.linux-x86_64.release" \
-        "/alpha/Bittle_URDF/bittle/bittle.usd"
+        usd_path =  os.environ.get("ISAACSIM_PATH") + "/alpha/Bittle_URDF/bittle/bittle.usd"
         
         imu_path = self.robot_prim + "/base_frame_link/Imu_Sensor"
 
