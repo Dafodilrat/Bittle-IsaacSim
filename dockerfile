@@ -12,22 +12,25 @@ WORKDIR ${ISAACSIM_PATH}
 RUN apt-get update && apt-get install -y \
     libx11-xcb1 \
     libxcb1 \
-    libxcb-glx0 \
-    libxcb-keysyms1 \
-    libxcb-image0 \
+    libxcb-render0 \
     libxcb-shm0 \
     libxcb-icccm4 \
-    libxcb-sync1 \
-    libxcb-xfixes0 \
-    libxcb-shape0 \
+    libxcb-image0 \
+    libxcb-keysyms1 \
     libxcb-randr0 \
     libxcb-render-util0 \
-    libxrender1 \
+    libxcb-shape0 \
+    libxcb-sync1 \
+    libxcb-xfixes0 \
+    libxcb-xinerama0 \
+    libxcb-xkb1 \
     libxkbcommon-x11-0 \
-    libxcomposite1 \
-    libxtst6 \
-    libxi6 
+    libglu1-mesa \
+    python3 python3-pip \
+    libnss3 libatk-bridge2.0-0 libxcomposite1 \
+    libxcursor1 libxi6 libxrandr2 libxss1 libxtst6
 
+RUN pip3 install PyQt5 vtk
 RUN apt-get update && apt-get install -y git
 
 RUN git clone https://github.com/Dafodilrat/Bittle-IsaacSim.git "$ISAACSIM_PATH/alpha"
@@ -35,8 +38,6 @@ RUN git clone https://github.com/Dafodilrat/Bittle-IsaacSim.git "$ISAACSIM_PATH/
 RUN ${ISAACSIM_PATH}/python.sh -m pip install --no-cache-dir \
     gymnasium \
     stable-baselines3 \
-    PyQt5 \
-    vtk \
     numpy \
     scipy \
     matplotlib
@@ -46,4 +47,4 @@ COPY docker_entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Run via entrypoint (handles git pull + python startup)
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/bin/bash"]

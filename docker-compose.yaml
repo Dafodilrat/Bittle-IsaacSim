@@ -27,4 +27,4 @@ services:
         reservations:
           devices:
             - capabilities: [gpu]
-    entrypoint: ["/docker_entrypoint.sh"]
+    entrypoint: ["/entrypoint.sh"]
