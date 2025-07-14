@@ -9,6 +9,25 @@ ENV ISAACSIM_PATH=/isaac-sim
 WORKDIR ${ISAACSIM_PATH}
 
 # Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcb-glx0 \
+    libxcb-keysyms1 \
+    libxcb-image0 \
+    libxcb-shm0 \
+    libxcb-icccm4 \
+    libxcb-sync1 \
+    libxcb-xfixes0 \
+    libxcb-shape0 \
+    libxcb-randr0 \
+    libxcb-render-util0 \
+    libxrender1 \
+    libxkbcommon-x11-0 \
+    libxcomposite1 \
+    libxtst6 \
+    libxi6 
+
 RUN apt-get update && apt-get install -y git
 
 RUN git clone https://github.com/Dafodilrat/Bittle-IsaacSim.git "$ISAACSIM_PATH/alpha"
