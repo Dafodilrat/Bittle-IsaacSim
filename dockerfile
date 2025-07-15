@@ -1,10 +1,12 @@
 # Start from Isaac Sim 4.5.0 base image
-#FROM nvcr.io/nvidia/isaac-sim:4.5.0
+FROM nvcr.io/nvidia/isaac-sim:4.5.0
 
-FROM nvidia/opengl:1.2-glvnd-devel-ubuntu22.04
+#FROM nvidia/opengl:1.2-glvnd-devel-ubuntu22.04
 # Set environment
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ISAACSIM_PATH=/isaac-sim
+ENV __NV_PRIME_RENDER_OFFLOAD=1
+ENV __GLX_VENDOR_LIBRARY_NAME=nvidia
 
 # Clone the repo
 WORKDIR ${ISAACSIM_PATH}
@@ -42,7 +44,8 @@ COPY 10_nvidia.json /usr/share/glvnd/egl_vendor.d/10_nvidia.json
 
 RUN apt install -y libgl1 libnvidia-gl-570 libnvidia-common-570 mesa-utils
 
-RUN pip3 install PyQt5 vtk
+RUN pip3 install PyQt5 vtk PyOpenGL
+
 RUN apt-get update && apt-get install -y git
 
 RUN git clone https://github.com/Dafodilrat/Bittle-IsaacSim.git "$ISAACSIM_PATH/alpha"
