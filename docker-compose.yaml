@@ -14,6 +14,8 @@ services:
       - QT_X11_NO_MITSHM=1
       - NVIDIA_DRIVER_CAPABILITIES=all
       - NVIDIA_VISIBLE_DEVICES=all
+      - LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/nvidia:$LD_LIBRARY_PATH
+
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - $HOME/.Xauthority:/root/.Xauthority:rw
@@ -26,5 +28,9 @@ services:
       resources:
         reservations:
           devices:
-            - capabilities: [gpu]
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+            
     entrypoint: ["/entrypoint.sh"]
+    #entrypoint : ["/bin/bash", "-c", "source /entrypoint.sh && exec python3 alpha/exts/customView/customView/pyqt_interface.py"]

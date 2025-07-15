@@ -28,7 +28,18 @@ RUN apt-get update && apt-get install -y \
     libglu1-mesa \
     python3 python3-pip \
     libnss3 libatk-bridge2.0-0 libxcomposite1 \
-    libxcursor1 libxi6 libxrandr2 libxss1 libxtst6
+    libxcursor1 libxi6 libxrandr2 libxss1 libxtst6 
+
+RUN apt-get install -y --no-install-recommends pkg-config\
+    libglvnd-dev\ 
+    libgl1-mesa-dev\
+    libegl1-mesa-dev\ 
+    libgles2-mesa-dev
+    #libgles2-mesa-dev:i386 
+
+COPY 10_nvidia.json /usr/share/glvnd/egl_vendor.d/10_nvidia.json
+
+RUN apt install -y libgl1 libnvidia-gl-570 libnvidia-common-570 mesa-utils
 
 RUN pip3 install PyQt5 vtk
 RUN apt-get update && apt-get install -y git
