@@ -2,8 +2,9 @@ from PyQt5.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
         QMessageBox, QSlider, QApplication, QFrame, QCheckBox, QTabWidget, QSpinBox
 )
-
+from PyQt5.QtOpenGL import QGLWidget
 from PyQt5.QtCore import Qt
+from OpenGL.GL import glGetString, GL_RENDERER, GL_VENDOR
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 import vtk
 import subprocess
@@ -111,6 +112,16 @@ class RLParamInputGUI(QWidget):
         self.setLayout(main_layout)
         self.generateTabs()
 
+        try:
+            self.renderer_info = self.detect_renderer()
+        except Exception as e:
+            self.renderer_info = f"Renderer: [Unavailable]"
+
+        # Add renderer label (green text)
+        self.renderer_label = QLabel(self.renderer_info)
+        self.renderer_label.setStyleSheet("color: green; font-size: 10pt;")
+        self.control_layout.addWidget(self.renderer_label)
+
     def init_vtk(self, parent_layout):
         vtk_frame = QFrame()
         vtk_layout = QVBoxLayout()
@@ -173,6 +184,22 @@ class RLParamInputGUI(QWidget):
         style.SetDefaultRenderer(self.renderer)
         self.interactor.SetInteractorStyle(style)
         self.interactor.Initialize()
+
+    def detect_renderer(self):
+
+        class DummyGL(QGLWidget):
+            def initializeGL(self_):
+                self_.renderer = glGetString(GL_RENDERER).decode()
+                self_.vendor = glGetString(GL_VENDOR).decode()
+                self_.close()
+
+        dummy = DummyGL()
+        dummy.show()  # required to trigger initializeGL
+        dummy.raise_()
+        dummy.activateWindow()
+        QApplication.processEvents()
+        return f"Renderer: {dummy.vendor} - {dummy.renderer}"
+
 
     def generateTabs(self):
         self.tabs.clear()
