@@ -122,7 +122,7 @@ The `RL Viewport` Isaac Sim extension (`ext.py`) is currently:
 
 Use the PyQt5 interface for all current workflows.
 
-![Isaac sim gui](images/isaacsim.png)
+![Isaac sim gui](images/IsaacSim.png)
 ![gui config](images/extension.png)
 
 ---
