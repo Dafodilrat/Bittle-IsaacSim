@@ -2,38 +2,54 @@ from omni.isaac.kit import SimulationApp
 import os
 import json
 import time
+import traceback
 
 class MultiAgentTrainer:
     def __init__(self, config_file="params.json", headless=False):
-        
+        print("[DEBUG] MultiAgentTrainer.__init__ started", flush=True)
+
         self.config_file = config_file
         self.agents = []
         self.sim_env = None
         self.steps_per_episode = 500
         self.num_episodes = 100
-        
+
+        print("[DEBUG] Calling load_config()", flush=True)
         self.load_config()
+        print("[DEBUG] Config loaded. Headless =", self.headless, flush=True)
 
-        self.sim_app = SimulationApp({
-            "headless": self.headless,
-            "hide_ui": True,
-            "window_width": 1280,
-            "window_height": 720,
-            "width": 1280,
-            "height": 720
-        })
+        try:
+            print("[DEBUG] Initializing SimulationApp...", flush=True)
+            self.sim_app = SimulationApp({
+                "headless": self.headless,
+                "hide_ui": True,
+                "window_width": 1280,
+                "window_height": 720,
+                "width": 1280,
+                "height": 720
+            })
+            print("[DEBUG] SimulationApp initialized successfully.", flush=True)
+        except Exception as e:
+            print("[ERROR] SimulationApp failed to initialize", flush=True)
+            traceback.print_exc()
 
-        from world import Environment
-        from PPO import PPOAgent
-        from Dp3d import DDPGAgent
+        try:
+            print("[DEBUG] Importing Environment and Agents", flush=True)
+            from world import Environment
+            from PPO import PPOAgent
+            from Dp3d import DDPGAgent
 
-        self.Environment = Environment
-        self.agent_classes = {
-            "ppo": PPOAgent,
-            "dp3d": DDPGAgent,
-        }
+            self.Environment = Environment
+            self.agent_classes = {
+                "ppo": PPOAgent,
+                "dp3d": DDPGAgent,
+            }
+        except Exception as e:
+            print("[ERROR] Failed to import environment or agents", flush=True)
+            traceback.print_exc()
 
     def wait_for_stage_ready(self, timeout=10.0):
+        print("[DEBUG] Waiting for stage to be ready...", flush=True)
         import omni.kit.app
         from isaacsim.core.utils.stage import is_stage_loading
         app = omni.kit.app.get_app()
@@ -46,8 +62,10 @@ class MultiAgentTrainer:
             print("[ENV] Waiting for stage...", flush=True)
             app.update()
             time.sleep(0.1)
+        print("[DEBUG] Stage is ready.", flush=True)
 
     def load_config(self):
+        print(f"[DEBUG] Loading config file: {self.config_file}", flush=True)
         if not os.path.exists(self.config_file):
             raise FileNotFoundError(f"Parameter file '{self.config_file}' not found.")
 
@@ -62,14 +80,19 @@ class MultiAgentTrainer:
         self.num_episodes = config.get("num_episodes", self.num_episodes)
         self.headless = config.get("headless", False)
 
-    def setup_environment_and_agents(self):
+        print("[DEBUG] Config values loaded:", flush=True)
+        print(json.dumps(config, indent=2), flush=True)
 
-        print("[ENV] Setting up environment and agents...",flush=True)
-        self.sim_env = self.Environment()
-        
-        print("[ENV] Env setup complete",flush=True)
-        
-        self.sim_env.add_bittles(n=self.num_agents)
+    def setup_environment_and_agents(self):
+        print("[DEBUG] Setting up environment and agents...", flush=True)
+        try:
+            self.sim_env = self.Environment()
+            print("[DEBUG] Environment object created", flush=True)
+            self.sim_env.add_bittles(n=self.num_agents)
+            print(f"[DEBUG] {self.num_agents} Bittles added", flush=True)
+        except Exception as e:
+            print("[ERROR] Error setting up environment or spawning agents", flush=True)
+            traceback.print_exc()
 
         self.agents.clear()
         for i, bittle in enumerate(self.sim_env.bittlles):
@@ -81,18 +104,19 @@ class MultiAgentTrainer:
             if agent_class is None:
                 raise ValueError(f"Unsupported algorithm: {algo}")
 
+            print(f"[DEBUG] Initializing Agent {i} with algo '{algo}'", flush=True)
             agent = agent_class(weights=weights, bittle=bittle, sim_env=self.sim_env, joint_states=joint_states)
             obs, _ = agent.gym_env.reset()
-            # agent.set_obs(obs)
             self.agents.append(agent)
-        
-        print("[ENV] Setup agents...",flush=True)
+
+        print("[DEBUG] All agents set up", flush=True)
 
     def train(self):
+        print("[DEBUG] Training started", flush=True)
         self.wait_for_stage_ready()
 
         for episode in range(self.num_episodes):
-            print(f"Starting episode {episode + 1}/{self.num_episodes}")
+            print(f"[DEBUG] Starting episode {episode + 1}/{self.num_episodes}", flush=True)
             step_count = 0
 
             while step_count < self.steps_per_episode:
@@ -109,14 +133,18 @@ class MultiAgentTrainer:
 
                 step_count += 1
 
+            print(f"[DEBUG] Episode {episode + 1} complete. Resetting agents...", flush=True)
             for agent in self.agents:
                 agent.reset()
 
-        print("Training complete.")
+        print("[DEBUG] Training complete. Saving models...", flush=True)
         for i, agent in enumerate(self.agents):
             agent.save(f"ppo_bittle_agent_{i}")
+        print("[DEBUG] Models saved.", flush=True)
+
 
 if __name__ == "__main__":
+    print("[DEBUG] Starting training script", flush=True)
     trainer = MultiAgentTrainer()
     trainer.setup_environment_and_agents()
     trainer.train()
