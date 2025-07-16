@@ -4,6 +4,9 @@ import json
 import time
 import traceback
 
+# Global SimulationApp (must be created in main thread)
+simulation_app = None
+
 class MultiAgentTrainer:
     def __init__(self, config_file="params.json", headless=False):
         print("[DEBUG] MultiAgentTrainer.__init__ started", flush=True)
@@ -17,21 +20,6 @@ class MultiAgentTrainer:
         print("[DEBUG] Calling load_config()", flush=True)
         self.load_config()
         print("[DEBUG] Config loaded. Headless =", self.headless, flush=True)
-
-        try:
-            print("[DEBUG] Initializing SimulationApp...", flush=True)
-            self.sim_app = SimulationApp({
-                "headless": self.headless,
-                "hide_ui": True,
-                "window_width": 1280,
-                "window_height": 720,
-                "width": 1280,
-                "height": 720
-            })
-            print("[DEBUG] SimulationApp initialized successfully.", flush=True)
-        except Exception as e:
-            print("[ERROR] SimulationApp failed to initialize", flush=True)
-            traceback.print_exc()
 
         try:
             print("[DEBUG] Importing Environment and Agents", flush=True)
@@ -145,6 +133,25 @@ class MultiAgentTrainer:
 
 if __name__ == "__main__":
     print("[DEBUG] Starting training script", flush=True)
-    trainer = MultiAgentTrainer()
-    trainer.setup_environment_and_agents()
-    trainer.train()
+
+    try:
+        simulation_app = SimulationApp({
+            "headless": False,
+            "hide_ui": False,
+            "window_width": 1280,
+            "window_height": 720,
+        })
+        print("[DEBUG] SimulationApp initialized", flush=True)
+
+        trainer = MultiAgentTrainer()
+        trainer.setup_environment_and_agents()
+        trainer.train()
+
+    except Exception as e:
+        print("[FATAL] Unhandled exception during training:", flush=True)
+        traceback.print_exc()
+
+    finally:
+        if simulation_app:
+            simulation_app.close()
+            print("[DEBUG] SimulationApp closed", flush=True)
