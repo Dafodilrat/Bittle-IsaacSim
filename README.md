@@ -1,132 +1,58 @@
-# 🦾 Isaac Sim Bittle RL Training Extension
+# 🦾 Isaac Sim Bittle RL Training Interface
 
-This project provides a custom GUI extension for NVIDIA Isaac Sim that enables real-time tuning and training of a reinforcement learning (RL) policy to control the Bittle quadruped robot using PPO (Proximal Policy Optimization) via Stable Baselines3. The extension includes sliders for reward parameter configuration and a "Start Training" button to launch training directly from within the Isaac Sim interface.
+This project enables reinforcement learning (RL) training of the Bittle quadruped robot in NVIDIA Isaac Sim using Proximal Policy Optimization (PPO) or DDPG. It now features a **standalone PyQt5 GUI** for multi-agent parameter tuning and training orchestration, making Isaac Sim integration modular and flexible.
 
-![Isaac SIM setup](images/IsaacSim.png)  
-![Extension GUI](images/extension.png)
-
----
-
-## 📦 Features
-
-- ✅ Isaac Sim GUI extension with integrated sliders for RL reward tuning  
-- ✅ PPO training pipeline using Stable Baselines3  
-- ✅ Custom Gym environment (`gym_env`) with live feedback and IMU-based observation  
-- ✅ Real-time reward shaping with posture, jerk, velocity, and goal distance penalties  
-- ✅ Uses `ArticulationView` and IMU sensors for robot state control and observation  
-- ✅ Generates TensorBoard logs for training visualization (`ppo_logs/`)
+![PyQT GUI tool](images/pyqt_gui.png)
+![Training](images/training.png)
 
 ---
 
-## 🛠️ Get Started
+## 🧩 Key Features
 
-Follow these steps to set up your environment and begin training:
-
-1. **Download Isaac Sim 4.5.0**  
-   Use the standalone version from NVIDIA's developer site.
-
-2. **Clone the Repository**  
-   ```bash
-   git clone https://github.com/your-username/isaac-bittle-rl-extension.git
-   cd isaac-bittle-rl-extension/alpha
-   ```
-
-3. **Install Required Packages**  
-   Use Isaac Sim's Python environment:
-   ```bash
-   ./python.sh -m pip install stable-baselines3[extra] gymnasium scipy numpy
-   ```
-
-4. **Enable the Extension in Isaac Sim**  
-   - Launch Isaac Sim
-   - Go to `Window > Extensions`
-   - Search for **RL Viewport** under the "3rd Party" tab
-   - Manually enable it
-
-5. **Run with Custom Extension Folder**  
-   If you want to launch Isaac Sim with the custom extension directly:
-   ```bash
-   ./isaac-sim.sh --ext-folder alpha/exts
-   ```
-   Replace `alpha` with the folder name where the repo was cloned.
+- ✅ **PyQt5 GUI** for configuring multiple Bittle agents:
+  - Set reward weights, lock joints, and choose RL algorithms (PPO or DDPG)
+  - Visualize joint positions and labels on a 3D model
+  - Launch training in Isaac Sim with a single click
+- ✅ Multi-agent training with `Gymnasium`-compatible environments
+- ✅ Modular agent support (PPO + DDPG with Stable Baselines3)
+- ✅ Live IMU-based observation, articulated control, and reward shaping
+- ✅ Generates logs compatible with TensorBoard
+- ⚠️ **[Broken] Isaac Sim Extension GUI**:
+  - The older `RL Viewport` extension is currently deprecated and unstable. See `ext.py` for legacy support.
 
 ---
 
-## 📁 Path Configuration
+## 🛠️ Setup
 
-You must update two hardcoded paths in the following files before using the extension:
+### 1. **Install Isaac Sim 4.5.0**
+Download the standalone version from [NVIDIA Developer](https://developer.nvidia.com/isaac-sim).
 
-1. **`PPO.py`**  
-   Modify the `sb3_path` to point to the `site-packages` directory in your Isaac Sim install:
-   ```python
-   sb3_path = "/your/local/path/to/isaac-sim/kit/python/lib/python3.10/site-packages"
-   ```
-
-2. **`Bittle.py` – `spawn_bittle()`**  
-   Update the path to the Bittle `.usd` robot file:
-   ```python
-   usd_path = "/your/local/path/to/isaac-bittle-rl-extension/alpha/Bittle_URDF/bittle/bittle.usd"
-   ```
-   This is critical for spawning the robot into the simulation.
-
----
-
-## 🚀 How to Use
-
-1. **Launch Isaac Sim**  
-   Start Isaac Sim and manually enable the RL extension as described above.
-
-2. **Tune Parameters**  
-   Use the GUI sliders to:
-   - Increase reward for upright posture  
-   - Penalize jerky motions or high joint velocity  
-   - Adjust penalty based on distance to goal  
-
-3. **Start Training**  
-   Click the **"Start Training"** button to begin PPO training.  
-   Trained model will be saved as:
-   ```
-   ./ppo_bittle.zip
-   ```
-
-4. **Visualize with TensorBoard**  
-   ```bash
-   tensorboard --logdir=ppo_logs/
-   ```
-
----
-
-## 🧪 Testing the Training Setup
-
-You can also test training logic outside the GUI by running:
-
+### 2. **Set Up Environment Variable**
+Set an environment variable called `ISAACSIM_PATH` pointing to your Isaac Sim install path:
 ```bash
-./python.sh -m alpha.exts.customView.customView.test
+export ISAACSIM_PATH=/path/to/your/isaac-sim
 ```
 
-Make sure to:
-- Launch Isaac Sim manually with GUI
-- Enable the extension
-- Ensure all paths are correct
+You can add this to your shell config (`.bashrc`, `.zshrc`, etc.).
 
-Clicking the **Start Training** button in the extension panel should reproduce the training behavior (or surface any errors).
-
----
-
-## ⚙️ Requirements
-
-- Isaac Sim 4.5.0 (Standalone version)  
-- Python 3.10+  
-- `stable-baselines3`, `gymnasium`, `scipy`, `numpy`  
-
-To install dependencies:
+### 3. **Clone the Repository**
+Clone the repo *inside* your Isaac Sim folder as `alpha`:
 ```bash
-./python.sh -m pip install stable-baselines3[extra] gymnasium scipy numpy
+cd $ISAACSIM_PATH
+git clone https://github.com/your-username/isaac-bittle-rl-extension.git alpha
+```
+
+This ensures all hardcoded paths in training scripts resolve correctly.
+
+### 4. **Install Python Dependencies**
+Use Isaac Sim's Python:
+```bash
+$ISAACSIM_PATH/python.sh -m pip install stable-baselines3[extra] gymnasium scipy numpy PyQt5 vtk
 ```
 
 ---
 
-## 🧠 Reward Function Breakdown
+## 🧠 Reward Function (Used in Both Agents)
 
 ```python
 reward = (
@@ -139,27 +65,77 @@ reward = (
 )
 ```
 
-Weights are set via the GUI before training begins.
+Each term's contribution can be adjusted using sliders in the GUI.
 
 ---
 
-## 📌 Notes
+## 🚀 How to Train
 
-- Do not run `PPO.py` standalone — it expects an active Isaac Sim simulation.
-- IMU data is used to infer robot pose (roll, pitch, yaw).
-- All training must be launched either from the GUI or using `test.py`.
+### Option A: **Using PyQt5 GUI (Recommended)**
+
+```bash
+$ISAACSIM_PATH/python.sh alpha/pyqt_interface.py
+```
+
+Steps:
+1. Select number of Bittle agents.
+2. Adjust reward weights, joint locks, and algorithms.
+3. Click **Start Training** to launch Isaac Sim and begin learning.
+
+Models are saved as:
+```
+ppo_bittle_agent_0.zip
+ppo_bittle_agent_1.zip
+...
+```
+
+### Option B: **Manual Script Launch (Advanced)**
+
+You can run the training script directly:
+```bash
+$ISAACSIM_PATH/python.sh alpha/test.py
+```
+
+Make sure to prepopulate `params.json` with the correct format as generated by the GUI.
+
+---
+
+## 📉 TensorBoard Logging
+
+Logs are saved to:
+- `ppo_logs/` for PPO agents
+- `dp3d_logs/` for DDPG agents
+
+View them with:
+```bash
+tensorboard --logdir=ppo_logs/
+```
+
+---
+
+## ⚠️ Legacy GUI Extension (Broken)
+
+The `RL Viewport` Isaac Sim extension (`ext.py`) is currently:
+- Buggy due to recent API changes
+- Non-functional with multiple agents or stop/start interaction
+- Kept in repo for future reference and debugging
+
+Use the PyQt5 interface for all current workflows.
+
+![Isaac sim gui](images/IsaacSim.png)
+![gui config](images/extension.png)
 
 ---
 
 ## 📜 License
 
-MIT License – see `LICENSE` file for details.
+MIT License – see `LICENSE` file.
 
 ---
 
 ## 🙏 Acknowledgments
 
-Built using:  
-- [NVIDIA Isaac Sim](https://developer.nvidia.com/isaac-sim)  
-- [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3)  
-- [Mini Pupper / Bittle by Petoi](https://www.petoi.com)
+Built using:
+- [NVIDIA Isaac Sim](https://developer.nvidia.com/isaac-sim)
+- [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3)
+- [Petoi Bittle](https://www.petoi.com)
