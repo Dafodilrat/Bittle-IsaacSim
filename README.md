@@ -2,6 +2,9 @@
 
 This project enables reinforcement learning (RL) training of the Bittle quadruped robot in NVIDIA Isaac Sim using Proximal Policy Optimization (PPO) or DDPG. It now features a **standalone PyQt5 GUI** for multi-agent parameter tuning and training orchestration, making Isaac Sim integration modular and flexible.
 
+![PyQT GUI tool](images/pyqt_gui.png)
+![Training](images/training.png)
+
 ---
 
 ## 🧩 Key Features
@@ -118,6 +121,9 @@ The `RL Viewport` Isaac Sim extension (`ext.py`) is currently:
 - Kept in repo for future reference and debugging
 
 Use the PyQt5 interface for all current workflows.
+
+![Isaac sim gui](images/isaacsim.png)
+![gui config](images/extension.png)
 
 ---
 
