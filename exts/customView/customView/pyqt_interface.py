@@ -308,7 +308,7 @@ class RLParamInputGUI(QWidget):
             # )
 
             self.proc = subprocess.Popen(
-                "./isaac-sim.sh",
+                f"{self.isaac_root}./isaac-sim.sh",
                 preexec_fn=os.setsid
             )
 
