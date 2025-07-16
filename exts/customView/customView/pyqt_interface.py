@@ -302,8 +302,13 @@ class RLParamInputGUI(QWidget):
             setup_script = f"{self.isaac_root}/python.sh"
             train_script = f"{self.isaac_root}/alpha/exts/customView/customView/test.py"
 
+            # self.proc = subprocess.Popen(
+            #     [setup_script, train_script],
+            #     preexec_fn=os.setsid
+            # )
+
             self.proc = subprocess.Popen(
-                [setup_script, train_script],
+                ["./isaac-sim.sh"],
                 preexec_fn=os.setsid
             )
 
