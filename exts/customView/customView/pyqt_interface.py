@@ -302,15 +302,15 @@ class RLParamInputGUI(QWidget):
             setup_script = f"{self.isaac_root}/python.sh"
             train_script = f"{self.isaac_root}/alpha/exts/customView/customView/test.py"
 
-            # self.proc = subprocess.Popen(
-            #     [setup_script, train_script],
-            #     preexec_fn=os.setsid
-            # )
-
             self.proc = subprocess.Popen(
-                f"{self.isaac_root}/isaac-sim.sh",
+                [setup_script, train_script],
                 preexec_fn=os.setsid
             )
+
+            # self.proc = subprocess.Popen(
+            #     f"{self.isaac_root}/isaac-sim.sh",
+            #     preexec_fn=os.setsid
+            # )
 
             self.train_btn.setEnabled(False)   # 🔒 Disable Start
             self.stop_btn.setEnabled(True)     # 🔓 Enable Stop
