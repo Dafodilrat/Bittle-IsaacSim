@@ -16,6 +16,7 @@ class MultiAgentTrainer:
         self.sim_env = None
         self.steps_per_episode = 500
         self.num_episodes = 100
+        self.isaac_root = os.environ.get("ISAACSIM_PATH")
 
         print("[DEBUG] Calling load_config()", flush=True)
         self.load_config()
@@ -103,6 +104,8 @@ class MultiAgentTrainer:
         print("[DEBUG] Training started", flush=True)
         self.wait_for_stage_ready()
 
+        global_step = 0
+
         for episode in range(self.num_episodes):
             print(f"[DEBUG] Starting episode {episode + 1}/{self.num_episodes}", flush=True)
             step_count = 0
@@ -120,15 +123,29 @@ class MultiAgentTrainer:
                     agent.train()
 
                 step_count += 1
+                global_step += 1
+
+                if global_step % 1000 == 0:
+                    print(f"[DEBUG] Saving models at global step {global_step}", flush=True)
+                    for i, agent in enumerate(self.agents):
+                        algo = self.agent_algorithms[i].lower()
+                        path = f"{self.isaac_root}/{algo}_agent_{i}_step_{global_step}.pth"
+                        print(f"[DEBUG] Saving {algo} agent {i} to {path}", flush=True)
+                        agent.save(path)
 
             print(f"[DEBUG] Episode {episode + 1} complete. Resetting agents...", flush=True)
             for agent in self.agents:
                 agent.reset()
 
-        print("[DEBUG] Training complete. Saving models...", flush=True)
+        print("[DEBUG] Training complete. Saving final models...", flush=True)
         for i, agent in enumerate(self.agents):
-            agent.save(f"ppo_bittle_agent_{i}")
-        print("[DEBUG] Models saved.", flush=True)
+            algo = self.agent_algorithms[i].lower()
+            final_path = f"{self.isaac_root}/{algo}_agent_{i}_final.pth"
+            print(f"[DEBUG] Saving final model for {algo} agent {i} to {final_path}", flush=True)
+            agent.save(final_path)
+
+        print("[DEBUG] Final models saved.", flush=True)
+
 
 
 if __name__ == "__main__":
@@ -137,7 +154,7 @@ if __name__ == "__main__":
     try:
         simulation_app = SimulationApp({
             "headless": False,
-            "hide_ui": False,
+            "hide_ui": True ,
             "window_width": 1280,
             "window_height": 720,
         })
