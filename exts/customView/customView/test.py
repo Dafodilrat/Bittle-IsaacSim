@@ -63,7 +63,12 @@ class MultiAgentTrainer:
         self.headless = config.get("headless", False)
 
     def setup_environment_and_agents(self):
+
+        print("[ENV] Setting up environment and agents...",flush=True)
         self.sim_env = self.Environment()
+        
+        print("[ENV] Env setup complete",flush=True)
+        
         self.sim_env.add_bittles(n=self.num_agents)
 
         self.agents.clear()
@@ -80,6 +85,8 @@ class MultiAgentTrainer:
             obs, _ = agent.gym_env.reset()
             # agent.set_obs(obs)
             self.agents.append(agent)
+        
+        print("[ENV] Setup agents...",flush=True)
 
     def train(self):
         self.wait_for_stage_ready()

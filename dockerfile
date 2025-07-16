@@ -50,12 +50,12 @@ RUN apt-get update && apt-get install -y git
 
 RUN git clone https://github.com/Dafodilrat/Bittle-IsaacSim.git "$ISAACSIM_PATH/alpha"
 
-# RUN ${ISAACSIM_PATH}/python.sh -m pip install --no-cache-dir \
-#     gymnasium \
-#     stable-baselines3 \
-#     numpy \
-#     scipy \
-#     matplotlib
+RUN ${ISAACSIM_PATH}/python.sh -m pip install --no-cache-dir \
+    gymnasium \
+    stable-baselines3 \
+    numpy \
+    scipy \
+    matplotlib
 
 # Add startup script
 COPY docker_entrypoint.sh /entrypoint.sh
