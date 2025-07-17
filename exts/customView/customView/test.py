@@ -1,14 +1,16 @@
 from omni.isaac.kit import SimulationApp
+
 import os
 import json
 import time
 import traceback
-
-# Global SimulationApp (must be created in main thread)
-simulation_app = None
+import omni.kit.app
+import pynvml
+import torch as th
 
 class MultiAgentTrainer:
-    def __init__(self, config_file="params.json", headless=False):
+
+    def __init__(self, config_file="params.json"):
         print("[DEBUG] MultiAgentTrainer.__init__ started", flush=True)
 
         self.config_file = config_file
@@ -16,33 +18,54 @@ class MultiAgentTrainer:
         self.sim_env = None
         self.steps_per_episode = 500
         self.num_episodes = 100
-        self.isaac_root = os.environ.get("ISAACSIM_PATH")
+        self.save_file = os.path.join(os.environ.get("ISAACSIM_PATH"), "alpha", "checkpoints")
+        self.save_step = 10000
+        os.makedirs(self.save_file, exist_ok=True)
 
-        print("[DEBUG] Calling load_config()", flush=True)
+        # Load config to determine headless/rendering behavior
         self.load_config()
-        print("[DEBUG] Config loaded. Headless =", self.headless, flush=True)
 
-        try:
-            print("[DEBUG] Importing Environment and Agents", flush=True)
-            from world import Environment
-            from PPO import PPOAgent
-            from Dp3d import DDPGAgent
+        # Setup SimulationApp after config is loaded
+        renderer_mode = "None" if self.headless else "Hybrid"
+        
+        SimulationApp({
+            "headless": self.headless,
+            "renderer": renderer_mode,
+            "hide_ui": True,  # Only hide UI if headless
+            "window_width": 1280,
+            "window_height": 720,
+        })
+        print(f"[DEBUG] SimulationApp initialized (headless={self.headless}, renderer={renderer_mode})", flush=True)
 
-            self.Environment = Environment
-            self.agent_classes = {
-                "ppo": PPOAgent,
-                "dp3d": DDPGAgent,
-            }
-        except Exception as e:
-            print("[ERROR] Failed to import environment or agents", flush=True)
-            traceback.print_exc()
+        from PPO import PPOAgent
+        from Dp3d import DDPGAgent
 
+        self.agent_classes = {
+            "ppo": PPOAgent,
+            "dp3d": DDPGAgent,
+        }
+
+    def select_training_gpu(self):
+        pynvml.nvmlInit()
+        device_count = pynvml.nvmlDeviceGetCount()
+
+        free_gpus = []
+        for i in range(device_count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+            mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            used = mem_info.used / mem_info.total
+            free_gpus.append((i, used))
+        
+            best_gpu = sorted(free_gpus, key=lambda x: x[1])[0][0]
+            pynvml.nvmlShutdown()
+            return f"cuda:{best_gpu}" if th.cuda.is_available() else "cpu"
+        
     def wait_for_stage_ready(self, timeout=10.0):
+
         print("[DEBUG] Waiting for stage to be ready...", flush=True)
-        import omni.kit.app
-        from isaacsim.core.utils.stage import is_stage_loading
         app = omni.kit.app.get_app()
         timeline = omni.timeline.get_timeline_interface()
+        from isaacsim.core.utils.stage import is_stage_loading 
 
         t0 = time.time()
         while is_stage_loading() or not timeline:
@@ -73,18 +96,27 @@ class MultiAgentTrainer:
         print(json.dumps(config, indent=2), flush=True)
 
     def setup_environment_and_agents(self):
+        
+        from world import Environment
+
         print("[DEBUG] Setting up environment and agents...", flush=True)
+        
         try:
-            self.sim_env = self.Environment()
+            
+            self.sim_env = Environment()
             print("[DEBUG] Environment object created", flush=True)
+            
             self.sim_env.add_bittles(n=self.num_agents)
             print(f"[DEBUG] {self.num_agents} Bittles added", flush=True)
+        
         except Exception as e:
             print("[ERROR] Error setting up environment or spawning agents", flush=True)
             traceback.print_exc()
 
         self.agents.clear()
-        for i, bittle in enumerate(self.sim_env.bittlles):
+
+        for i, bittle in enumerate(self.sim_env.bittles):
+
             weights = self.all_weights[i]
             joint_states = self.all_joint_states[i] if i < len(self.all_joint_states) else {}
             algo = self.agent_algorithms[i].lower()
@@ -94,7 +126,7 @@ class MultiAgentTrainer:
                 raise ValueError(f"Unsupported algorithm: {algo}")
 
             print(f"[DEBUG] Initializing Agent {i} with algo '{algo}'", flush=True)
-            agent = agent_class(weights=weights, bittle=bittle, sim_env=self.sim_env, joint_states=joint_states)
+            agent = agent_class(weights=weights, bittle=bittle, sim_env=self.sim_env, joint_states=joint_states, device=self.select_training_gpu())
             obs, _ = agent.gym_env.reset()
             self.agents.append(agent)
 
@@ -125,11 +157,11 @@ class MultiAgentTrainer:
                 step_count += 1
                 global_step += 1
 
-                if global_step % 1000 == 0:
+                if global_step % self.save_step == 0:
                     print(f"[DEBUG] Saving models at global step {global_step}", flush=True)
                     for i, agent in enumerate(self.agents):
                         algo = self.agent_algorithms[i].lower()
-                        path = f"{self.isaac_root}/{algo}_agent_{i}_step_{global_step}.pth"
+                        path = f"{self.save_file}/{algo}_agent_{i}_step_{global_step}.pth"
                         print(f"[DEBUG] Saving {algo} agent {i} to {path}", flush=True)
                         agent.save(path)
 
@@ -140,26 +172,17 @@ class MultiAgentTrainer:
         print("[DEBUG] Training complete. Saving final models...", flush=True)
         for i, agent in enumerate(self.agents):
             algo = self.agent_algorithms[i].lower()
-            final_path = f"{self.isaac_root}/{algo}_agent_{i}_final.pth"
+            final_path = f"{self.save_file}/{algo}_agent_{i}_final.pth"
             print(f"[DEBUG] Saving final model for {algo} agent {i} to {final_path}", flush=True)
             agent.save(final_path)
 
         print("[DEBUG] Final models saved.", flush=True)
 
 
-
 if __name__ == "__main__":
     print("[DEBUG] Starting training script", flush=True)
 
     try:
-        simulation_app = SimulationApp({
-            "headless": False,
-            "hide_ui": True ,
-            "window_width": 1280,
-            "window_height": 720,
-        })
-        print("[DEBUG] SimulationApp initialized", flush=True)
-
         trainer = MultiAgentTrainer()
         trainer.setup_environment_and_agents()
         trainer.train()
@@ -168,7 +191,3 @@ if __name__ == "__main__":
         print("[FATAL] Unhandled exception during training:", flush=True)
         traceback.print_exc()
 
-    finally:
-        if simulation_app:
-            simulation_app.close()
-            print("[DEBUG] SimulationApp closed", flush=True)
