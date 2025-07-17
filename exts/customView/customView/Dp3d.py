@@ -103,6 +103,6 @@ class DDPGAgent:
 
     def save(self, step_increment=1, prefix="dp3d"):
         self.step_count += step_increment
-        path = os.path.join(self.save_dir, f"{prefix}_step_{self.step_count}.zip")
+        path = os.path.join(self.save_dir, f"{prefix}_step_{self.step_count}.pth")
         self.model.save(path)
         print(f"[DDPG] Saved model to {path}", flush=True)
