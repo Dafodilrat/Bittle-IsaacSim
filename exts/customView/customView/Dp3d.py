@@ -1,26 +1,27 @@
-import numpy as np
-import sys
 import os
+import sys
+import glob
+import numpy as np
 import torch as th
-
-sb3_path =  os.environ.get("ISAACSIM_PATH")+"/kit/python/lib/python3.10/site-packages"
-if sb3_path not in sys.path:
-    sys.path.append(sb3_path)
-    print("Manually added stable-baselines3 path to sys.path")
 
 from stable_baselines3 import DDPG
 from stable_baselines3.common.vec_env import DummyVecEnv
 from GymWrapper import gym_env
 
+sb3_path = os.environ.get("ISAACSIM_PATH") + "/kit/python/lib/python3.10/site-packages"
+if sb3_path not in sys.path:
+    sys.path.append(sb3_path)
+    print("Manually added stable-baselines3 path to sys.path")
 
 class DDPGAgent:
     def __init__(self, bittle, weights, sim_env, joint_states, device="cpu"):
         self.device = device
         self.should_stop = False
         self.gradient_steps = 1
+        self.save_dir = os.path.join(os.environ["ISAACSIM_PATH"], "alpha", "checkpoints")
+        os.makedirs(self.save_dir, exist_ok=True)
 
-        print("[DDP] set to device:", self.device, flush=True)
-
+        self.step_count = 0
         self.gym_env = gym_env(
             bittle=bittle,
             env=sim_env,
@@ -35,18 +36,31 @@ class DDPGAgent:
             device=self.device,
         )
 
+        latest_ckpt = self._load_latest_checkpoint("dp3d")
+        if latest_ckpt:
+            self.model.set_parameters(latest_ckpt["path"])
+            self.step_count = latest_ckpt["step"]
+            print(f"[DDPG] Loaded checkpoint from {latest_ckpt['path']} at step {self.step_count}", flush=True)
+
         self.policy = self.model.policy
         self.buffer = self.model.replay_buffer
-
         self.obs, _ = self.gym_env.reset()
         self.dones = [False]
+
+    def _load_latest_checkpoint(self, prefix):
+        files = glob.glob(os.path.join(self.save_dir, f"{prefix}_step_*.pth"))
+        if not files:
+            return None
+        files.sort(key=lambda p: int(p.split("_step_")[-1].split(".")[0]), reverse=True)
+        path = files[0]
+        step = int(path.split("_step_")[-1].split(".")[0])
+        return {"path": path, "step": step}
 
     def predict_action(self, obs):
         action, _ = self.policy.predict(obs, deterministic=False)
         return action
 
     def add_to_buffer(self, obs, action, reward, done):
-        
         obs_prev = self.gym_env.get_previous_observation()
         obs_next = self.gym_env.get_current_observation()
 
@@ -64,17 +78,8 @@ class DDPGAgent:
 
     def train_if_ready(self):
         if self.buffer.size() >= self.model.batch_size:
-            self.model.learn(
-                total_timesteps=self.gradient_steps,
-                reset_num_timesteps=False
-            )
+            self.model.learn(total_timesteps=self.gradient_steps, reset_num_timesteps=False)
             self.buffer.reset()
-
-    def stop_training(self):
-        self.should_stop = True
-
-    def save(self, path):
-        self.model.save(path)
 
     def post_step(self, action):
         obs, reward, done, info = self.gym_env.post_step()
@@ -82,7 +87,7 @@ class DDPGAgent:
 
     def step(self, action, sim_step_fn=None):
         self.gym_env.step(action)
-        if sim_step_fn is not None:
+        if sim_step_fn:
             sim_step_fn()
             self.post_step(action)
 
@@ -92,4 +97,12 @@ class DDPGAgent:
     def reset(self):
         self.obs, _ = self.gym_env.reset()
         self.buffer.reset()
-    
+
+    def stop_training(self):
+        self.should_stop = True
+
+    def save(self, step_increment=1, prefix="dp3d"):
+        self.step_count += step_increment
+        path = os.path.join(self.save_dir, f"{prefix}_step_{self.step_count}.zip")
+        self.model.save(path)
+        print(f"[DDPG] Saved model to {path}", flush=True)
