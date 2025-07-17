@@ -161,7 +161,7 @@ class MultiAgentTrainer:
                     print(f"[DEBUG] Saving models at global step {global_step}", flush=True)
                     for i, agent in enumerate(self.agents):
                         algo = self.agent_algorithms[i].lower()
-                        path = f"{self.save_file}/{algo}_agent_{i}_step_{global_step}.pth"
+                        path = f"{self.save_file}/{algo}_step_{global_step}.pth"
                         print(f"[DEBUG] Saving {algo} agent {i} to {path}", flush=True)
                         agent.save(path)
 
@@ -172,7 +172,7 @@ class MultiAgentTrainer:
         print("[DEBUG] Training complete. Saving final models...", flush=True)
         for i, agent in enumerate(self.agents):
             algo = self.agent_algorithms[i].lower()
-            final_path = f"{self.save_file}/{algo}_agent_{i}_final.pth"
+            final_path = f"{self.save_file}/{algo}_final.pth"
             print(f"[DEBUG] Saving final model for {algo} agent {i} to {final_path}", flush=True)
             agent.save(final_path)
 
