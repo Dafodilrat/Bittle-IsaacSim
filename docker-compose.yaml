@@ -16,12 +16,13 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/nvidia:$LD_LIBRARY_PATH
       - OMNI_KIT_ALLOW_ROOT=1
-
+      - ISAACSIM_PATH=/isaac-sim
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - $HOME/.Xauthority:/root/.Xauthority:rw
       - ~/.cache/ov:/root/.cache/ov:rw
       - ~/.nucleus:/root/.nucleus:rw
+      - ./checkpoints:/${ISAACSIM_PATH}/checkpoints
 
       # - $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:/tmp/$WAYLAND_DISPLAY
 

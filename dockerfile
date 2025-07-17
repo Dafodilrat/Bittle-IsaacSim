@@ -55,7 +55,9 @@ RUN ${ISAACSIM_PATH}/python.sh -m pip install --no-cache-dir \
     stable-baselines3 \
     numpy \
     scipy \
-    matplotlib
+    matplotlib \
+    tensorboard \
+    pynvml
 
 # Add startup script
 COPY docker_entrypoint.sh /entrypoint.sh
