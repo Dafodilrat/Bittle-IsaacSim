@@ -15,7 +15,7 @@ from GymWrapper import gym_env
 
 class DDPGAgent:
     def __init__(self, bittle, weights, sim_env, joint_states, device="cpu"):
-        self.device = "cuda" if th.cuda.is_available() else "cpu"
+        self.device = device
         self.should_stop = False
         self.gradient_steps = 1
 
@@ -45,6 +45,7 @@ class DDPGAgent:
         return action
 
     def add_to_buffer(self, obs, action, reward, done):
+        
         obs_prev = self.gym_env.get_previous_observation()
         obs_next = self.gym_env.get_current_observation()
 
