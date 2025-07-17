@@ -21,6 +21,8 @@ class PPOAgent:
     def __init__(self, bittle, weights, sim_env, joint_states, device="cpu"):
         self.should_stop = False
 
+        print("[PPO] set to device:", device, flush=True)
+
         self.gym_env = gym_env(
             bittle=bittle,
             env=sim_env,

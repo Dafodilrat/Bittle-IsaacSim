@@ -19,6 +19,8 @@ class DDPGAgent:
         self.should_stop = False
         self.gradient_steps = 1
 
+        print("[DDP] set to device:", self.device, flush=True)
+
         self.gym_env = gym_env(
             bittle=bittle,
             env=sim_env,
