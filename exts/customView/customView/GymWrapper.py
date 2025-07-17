@@ -49,7 +49,7 @@ class gym_env(gymnasium.Env):
         self._last_info = {}
 
     def step(self, action):
-        print("[STEP] applying action:", action, flush=True)
+    
         action = np.where(self.joint_lock_mask, 0.0, action)
         self.bittle.set_robot_action(action)
 
