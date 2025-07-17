@@ -31,7 +31,6 @@ class DDPGAgent:
             env=DummyVecEnv([lambda: self.gym_env]),
             verbose=0,
             device=self.device,
-            tensorboard_log="./dp3d_logs"
         )
 
         self.policy = self.model.policy

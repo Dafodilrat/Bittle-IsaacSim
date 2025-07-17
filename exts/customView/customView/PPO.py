@@ -33,7 +33,6 @@ class PPOAgent:
             env=DummyVecEnv([lambda: self.gym_env]),
             verbose=0,
             device=device,
-            tensorboard_log="./ppo_logs"
         )
 
         # Easy access
