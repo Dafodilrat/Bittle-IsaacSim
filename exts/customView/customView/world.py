@@ -13,6 +13,7 @@ from omni.kit.async_engine import run_coroutine
 from Bittle import Bittle
 
 import omni.usd
+from torch import device
 
 class Environment:
     _instance = None
@@ -30,7 +31,7 @@ class Environment:
         self.physics = "/World/PhysicsScene"  
         self.grnd_plane = "/World/GroundPlane"
         self.bitlles_count = 0
-        self.bittlles = []
+        self.bittles = []
         self.spawn_points = []
         self.stage = None
         self.context = None
@@ -39,12 +40,12 @@ class Environment:
         # Initialize in proper order for Kit extensions
         self.setup_stage_and_physics()
 
-        self.world = World(stage_units_in_meters=1.0,physics_prim_path = self.physics,set_defaults=True)
+        self.world = World(stage_units_in_meters=1.0,physics_prim_path = self.physics,set_defaults=True, device="cuda")
 
         physics_ctx = PhysicsContext(prim_path=self.physics)
         
         print("[ENV] physics context at :",self.world.get_physics_context(),flush=True)
-        
+
         self.world.reset()
 
         self.world.play()
@@ -151,6 +152,8 @@ class Environment:
         
         self.wait_for_prim(self.physics)
 
+        # Enable GPU physics if available
+
         # Add dome light similar to default startup
         self.create_colored_dome_light()
 
@@ -226,7 +229,7 @@ class Environment:
                 b.set_articulation()
                 self.world.step(render=True)
                 self.wait_for_stage_ready()
-                self.bittlles.append(b)
+                self.bittles.append(b)
             
             except Exception as e:
                 import traceback
