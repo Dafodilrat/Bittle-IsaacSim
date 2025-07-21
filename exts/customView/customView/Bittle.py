@@ -1,26 +1,27 @@
 from isaacsim.core.utils.prims import is_prim_path_valid, get_prim_at_path
-from isaacsim.core.prims import Articulation, SingleArticulation
+from isaacsim.core.prims import Articulation
 from isaacsim.sensors.physics import _sensor  
 from isaacsim.core.utils.stage import add_reference_to_stage, get_current_stage
 from isaacsim.sensors.physics import IMUSensor
-from pxr import UsdPhysics, PhysxSchema
+from pxr import UsdPhysics, PhysxSchema, UsdGeom, Sdf, Gf, UsdShade
 from omni.kit.commands import execute
 from omni.isaac.core.simulation_context import SimulationContext
 
 import os
-from pxr import UsdGeom, Sdf, Gf
-from scipy.spatial.transform import Rotation as R
 import time
 import numpy as np
-from sympy import true
+from scipy.spatial.transform import Rotation as R
+import random
+
 
 class Bittle:
-    def __init__(self, cords, id, world, flush=False):
+    def __init__(self, cords, id, world, flush=True):
         self.flush = flush
         self.robot_prim = "/World/bittle" + str(id)
         self.world = world
         self.spawn_cords = cords
         self.robot_view = None
+        self.color = tuple(random.uniform(0.4, 1.0) for _ in range(3))  # RGB in [0.4–1.0]
 
     def log(self, *args, **kwargs):
         if self.flush:
@@ -117,10 +118,40 @@ class Bittle:
         else:
             self.log("[Bittle] Already has articulation:root =", prim.GetAttribute("articulation:root").Get())
 
+        prim.SetInstanceable(False)
+
+        # Remove material bindings and apply color
+        self.unbind_materials()
+        self.apply_display_color()
+
+        # Position
         x, y, z = self.spawn_cords
         xform = UsdGeom.Xformable(prim)
         xform.ClearXformOpOrder()
         xform.AddTranslateOp().Set(Gf.Vec3d(x, y, 1))
+
+    def apply_display_color(self):
+        def recursive_color(prim):
+            if prim.IsA(UsdGeom.Mesh):
+                mesh = UsdGeom.Mesh(prim)
+                mesh.CreateDisplayColorAttr().Set([Gf.Vec3f(*self.color)])
+            for child in prim.GetChildren():
+                recursive_color(child)
+
+        prim = get_prim_at_path(self.robot_prim)
+        recursive_color(prim)
+        self.log(f"[COLOR] Applied color {self.color} to {self.robot_prim}")
+
+    def unbind_materials(self):
+        def recursive_unbind(prim):
+            binding = UsdShade.MaterialBindingAPI(prim)
+            binding.UnbindDirectBinding()
+            for child in prim.GetChildren():
+                recursive_unbind(child)
+
+        prim = get_prim_at_path(self.robot_prim)
+        recursive_unbind(prim)
+        self.log(f"[COLOR] Unbound materials for {self.robot_prim}")
 
     def respawn_bittle(self):
         self.log("[Bittle] respawn_bittle() entered")
@@ -143,12 +174,18 @@ class Bittle:
 
     def get_joint_names(self):
         return self.robot_view.dof_names
+    
+    def print_info(self):
+        self.log("[INFO] Fetching robot pose and IMU orientation...")
 
-
+        try:
+            pos, ori = self.get_curr_robot_pose()
+            self.log(f"[INFO] Position: x={pos[0]:.3f}, y={pos[1]:.3f}, z={pos[2]:.3f}")
+            self.log(f"[INFO] Orientation (rpy): roll={ori[0]:.3f}, pitch={ori[1]:.3f}, yaw={ori[2]:.3f}")
+        except Exception as e:
+            self.log(f"[ERROR] Failed to retrieve pose or orientation: {e}")
 
 
 
 if __name__ == "__main__":
-
-    b = Bittle()
-    
+    print("[Bittle] This module is meant to be used as part of the simulation pipeline.")
