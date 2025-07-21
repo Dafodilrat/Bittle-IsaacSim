@@ -64,14 +64,16 @@ class RLParamInputGUI(QWidget):
         self.setWindowTitle("RL Multi-Agent Parameter GUI")
 
         self.isaac_root = os.environ.get("ISAACSIM_PATH")
-        self.default_weights = [100, 10, 10, 5, 2, 10]
+        self.default_weights = [5.0, 4.0, 2.0, 1.0, 0.5, 3.0, 8.0, 2.0]
         self.param_defs = [
             ("Correct Posture Bonus", 0, 100, self.default_weights[0]),
             ("Smooth Bonus Weight", 0, 100, self.default_weights[1]),
             ("Incorrect Posture Penalty", 0, 100, self.default_weights[2]),
             ("Jerking Movement Penalty (x10)", 0, 50, self.default_weights[3] * 10),
             ("High Joint Velocity Penalty (x10)", 0, 50, self.default_weights[4] * 10),
-            ("Distance to Goal Penalty", 0, 100, self.default_weights[5]),
+            ("Z Height Penalty", 0, 100, self.default_weights[5]),
+            ("Distance to Goal Penalty", 0, 100, self.default_weights[6]),
+            ("Goal Alignment Bonus", 0, 100, self.default_weights[7]),
         ]
         self.joint_labels = {
             "left_back_shoulder_joint":   (20, 50, 270),
