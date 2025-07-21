@@ -2,6 +2,10 @@ import gymnasium
 from gymnasium import spaces
 import numpy as np
 from world import Environment
+from pxr import UsdGeom, Gf
+from isaacsim.core.utils.stage import get_current_stage, is_stage_loading
+from isaacsim.core.utils.prims import is_prim_path_valid, get_prim_at_path
+
 
 class gym_env(gymnasium.Env):
 
@@ -36,9 +40,6 @@ class gym_env(gymnasium.Env):
         ])
         self.observation_space = spaces.Box(low=obs_low - 0.01, high=obs_high + 0.01, dtype=np.float64)
 
-        self.goals = self.environment.get_valid_positions_on_terrain()
-        self.current_goal = self.goals[np.random.choice(len(self.goals))]
-
         self.prev_distance = 0
         self.total_rewards = 0
         self.delta = 0
@@ -47,6 +48,9 @@ class gym_env(gymnasium.Env):
         self._last_reward = 0.0
         self._last_done = False
         self._last_info = {}
+        self.goal_marker_path = f"/World/GoalMarker_{self.bittle.robot_prim.split('/')[-1]}"
+        self.create_or_update_goal_marker(self.environment.goal_points[0])
+
 
     def step(self, action):
     
@@ -71,12 +75,10 @@ class gym_env(gymnasium.Env):
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
 
-        if len(self.goals) > 1:
-            self.goals.remove(self.current_goal)
-        else:
-            self.goals = self.environment.get_valid_positions_on_terrain()
+        self.current_goal = self.environment.goal_points[
+            np.random.choice(len(self.environment.goal_points))
+        ]
 
-        self.current_goal = self.goals[np.random.choice(len(self.goals))]
         self.bittle.reset_simulation()
 
         self.prev_action = np.zeros_like(self.prev_action)
@@ -91,11 +93,27 @@ class gym_env(gymnasium.Env):
         self._last_info = self.generate_info()
         self._last_info["new"] = True
 
+        self.create_or_update_goal_marker(self.current_goal)
+
         return self._last_obs, self._last_info
 
     def is_terminated(self):
         pos, *_ = self.observations
-        return np.linalg.norm(np.array(pos[:2]) - np.array(self.current_goal[:2])) < 0.1
+
+        # Check goal reached
+        goal_reached = np.linalg.norm(np.array(pos[:2]) - np.array(self.current_goal[:2])) < 2
+
+        # Check collision with other Bittles
+        collided_paths = self.environment.get_collided_bittle_prim_paths()
+        self_collided = self.bittle.robot_prim in collided_paths
+
+        if goal_reached:
+            print(f"[TERMINATED] Goal reached by {self.bittle.robot_prim}", flush=True)
+        if self_collided:
+            print(f"[TERMINATED] Collision detected for {self.bittle.robot_prim}", flush=True)
+
+        return goal_reached or self_collided
+
 
     def generate_info(self):
         pos, orientation, joint_angles, joint_velocities = self.observations
@@ -112,37 +130,59 @@ class gym_env(gymnasium.Env):
 
     def calculate_reward(self, action):
         pos, orientation, joint_angles, joint_velocities = self.observations
-        params = self.weights
+        params = self.weights  # Expected to be a list of 8 weights
 
-        z = pos[2]
-        roll, pitch, _ = orientation
+        roll, pitch, yaw = orientation
         delta = np.abs(action - self.prev_action)
 
-        roll_penalty = max(0.0, abs(roll) - 1.2)
-        pitch_penalty = max(0.0, abs(pitch) - 1.2)
-        posture_penalty = roll_penalty ** 2 + pitch_penalty ** 2
-        jerk_penalty = np.sum(np.clip(delta - 0.1, 0, None))
-        velocity_penalty = np.sum(np.clip(np.abs(joint_velocities) - 90.0, 0, None))
-        z_penalty = 0.4 - z if z < 0.4 else 0.0
+        # --- Reward components ---
+        posture_penalty = (max(0, abs(roll) - 0.2) ** 2 + max(0, abs(pitch) - 0.2) ** 2)
+        jerk_penalty = np.linalg.norm(delta)
+        velocity_penalty = np.sum(np.tanh(np.abs(joint_velocities) / 100))
+        z_penalty = max(0.0, 0.3 - pos[2])
 
-        upright_bonus = 1.0 if abs(roll) < 1 and abs(pitch) < 1 else 0.0
-        smooth_bonus = 1.0 if np.all(delta < 0.5) else 0.0
+        # Upright and smooth movement bonuses
+        upright_bonus = np.clip(1.5 - (abs(roll) + abs(pitch)), 0, 1.5)
+        smooth_bonus = np.exp(-np.linalg.norm(delta))
 
+        # Distance-based shaping
         dist_to_goal = np.linalg.norm(self.current_goal[:2] - pos[:2])
-        self.delta = abs(self.prev_distance - dist_to_goal)
+        delta_dist = abs(self.prev_distance - dist_to_goal)
+        self.delta = delta_dist
 
+        # Goal heading alignment
+        goal_vector = np.array(self.current_goal[:2]) - np.array(pos[:2])
+        robot_forward = np.array([np.cos(yaw), np.sin(yaw)])
+        goal_alignment_bonus = max(0.0, np.dot(goal_vector, robot_forward) / (np.linalg.norm(goal_vector) + 1e-6))
+
+        # Arrival bonus if upright and at goal
+        at_goal = dist_to_goal < 0.1 and abs(roll) < 0.3 and abs(pitch) < 0.3
+        goal_arrival_bonus = 20.0 if at_goal else 0.0
+
+        # --- Tipping detection ---
+        is_tipped = abs(roll) > 0.8 or abs(pitch) > 0.8
+        tipping_penalty = 5.0 if is_tipped else 0.0
+
+        # Recovery bonus if it was tipped in last step and now isn't
+        was_tipped = getattr(self, "was_tipped_last", False)
+        recovering_bonus = 2.0 if was_tipped and not is_tipped else 0.0
+        self.was_tipped_last = is_tipped
+
+        # --- Final reward calculation ---
         reward = 0.0
         reward += params[0] * upright_bonus
         reward += params[1] * smooth_bonus
         reward -= params[2] * posture_penalty
         reward -= params[3] * jerk_penalty
         reward -= params[4] * velocity_penalty
-        reward -= z_penalty
-        reward -= params[5] * dist_to_goal
+        reward -= params[5] * z_penalty
+        reward -= params[6] * dist_to_goal
+        reward += params[7] * goal_alignment_bonus
+        reward += goal_arrival_bonus
+        reward -= tipping_penalty
+        reward += recovering_bonus
 
-        if self.delta < 0.05 and self.prev_distance != 0:
-            reward -= 200
-
+        # Save state
         self.prev_action = action.copy()
         self.prev_distance = dist_to_goal
 
@@ -153,3 +193,33 @@ class gym_env(gymnasium.Env):
 
     def get_current_observation(self):
         return np.concatenate(self.bittle.get_robot_observation())
+    
+    def create_or_update_goal_marker(self, position):
+        stage = get_current_stage()
+
+        # Elevate Z a bit for visibility
+        elevated_pos = (position[0], position[1], position[2] + 0.15)
+
+        if not is_prim_path_valid(self.goal_marker_path):
+            # Create the marker if it doesn't exist
+            sphere = UsdGeom.Sphere.Define(stage, self.goal_marker_path)
+            sphere.CreateRadiusAttr(0.1)
+
+            # Set position
+            xform = UsdGeom.Xformable(sphere)
+            xform.AddTranslateOp().Set(Gf.Vec3d(*elevated_pos))
+
+            # Set bright green color
+            sphere.GetDisplayColorAttr().Set([Gf.Vec3f(*(0.0, 1.0, 0.0))])
+
+        else:
+            # Move existing marker to new elevated goal position
+            prim = stage.GetPrimAtPath(self.goal_marker_path)
+            xform = UsdGeom.Xformable(prim)
+            ops = xform.GetOrderedXformOps()
+            if ops:
+                ops[0].Set(Gf.Vec3d(*elevated_pos))
+            else:
+                xform.AddTranslateOp().Set(Gf.Vec3d(*elevated_pos))
+
+
