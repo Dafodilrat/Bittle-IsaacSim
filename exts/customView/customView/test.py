@@ -16,7 +16,7 @@ class MultiAgentTrainer:
         self.config_file = config_file
         self.agents = []
         self.sim_env = None
-        self.steps_per_episode = 500
+        self.steps_per_episode = 1000
         self.num_episodes = 100
         self.save_file = os.path.join(os.environ.get("ISAACSIM_PATH"), "alpha", "checkpoints")
         self.save_step = 10000
