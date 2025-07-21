@@ -15,7 +15,7 @@ import random
 
 
 class Bittle:
-    def __init__(self, cords, id, world, flush=True):
+    def __init__(self, cords, id, world, flush=False):
         self.flush = flush
         self.robot_prim = "/World/bittle" + str(id)
         self.world = world
