@@ -64,17 +64,19 @@ class RLParamInputGUI(QWidget):
         self.setWindowTitle("RL Multi-Agent Parameter GUI")
 
         self.isaac_root = os.environ.get("ISAACSIM_PATH")
-        self.default_weights = [5.0, 4.0, 2.0, 1.0, 0.5, 3.0, 8.0, 2.0]
+        self.default_weights = [5, 4, 2, 1, 0.5, 3, 8, 2]
         self.param_defs = [
-            ("Correct Posture Bonus", 0, 100, self.default_weights[0]),
-            ("Smooth Bonus Weight", 0, 100, self.default_weights[1]),
-            ("Incorrect Posture Penalty", 0, 100, self.default_weights[2]),
-            ("Jerking Movement Penalty (x10)", 0, 50, self.default_weights[3] * 10),
-            ("High Joint Velocity Penalty (x10)", 0, 50, self.default_weights[4] * 10),
-            ("Z Height Penalty", 0, 100, self.default_weights[5]),
-            ("Distance to Goal Penalty", 0, 100, self.default_weights[6]),
-            ("Goal Alignment Bonus", 0, 100, self.default_weights[7]),
+            ("Correct Posture Bonus", 0, 10, self.default_weights[0]),
+            ("Smooth Bonus Weight", 0, 10, self.default_weights[1]),
+            ("Incorrect Posture Penalty", 0, 10, self.default_weights[2]),
+            ("Jerking Movement Penalty (x10)", 0, 50, int(self.default_weights[3] * 10)),  # scaled
+            ("High Joint Velocity Penalty (x10)", 0, 50, int(self.default_weights[4] * 10)),  # scaled
+            ("Z Height Penalty", 0, 10, self.default_weights[5]),
+            ("Distance to Goal Penalty", 0, 20, self.default_weights[6]),
+            ("Goal Alignment Bonus", 0, 10, self.default_weights[7]),
         ]
+
+
         self.joint_labels = {
             "left_back_shoulder_joint":   (20, 50, 270),
             "left_back_knee_joint":   (13, 20, 235),
@@ -229,14 +231,19 @@ class RLParamInputGUI(QWidget):
 
             for label_text, min_val, max_val, default in self.param_defs:
                 hbox = QHBoxLayout()
-                label = QLabel(f"{label_text}: {default / 10.0 if 'x10' in label_text else default}")
                 slider = QSlider(Qt.Horizontal)
+                scaled = "x10" in label_text
+                label = QLabel(f"{label_text}: {default / 10.0:.1f}" if scaled else f"{label_text}: {default}")
                 slider.setMinimum(min_val)
                 slider.setMaximum(max_val)
-                slider.setValue(default)
+                slider.setValue(default * 10 if scaled else default)
                 slider.setTickInterval(1)
                 slider.setSingleStep(1)
-                slider.valueChanged.connect(lambda val, l=label, t=label_text: l.setText(f"{t}: {val / 10.0 if 'x10' in t else val}"))
+                slider.valueChanged.connect(
+                    lambda val, l=label, t=label_text: l.setText(
+                        f"{t}: {val / 10.0:.1f}" if "x10" in t else f"{t}: {val}"
+                    )
+                )
                 hbox.addWidget(label)
                 hbox.addWidget(slider)
                 vbox.addLayout(hbox)
