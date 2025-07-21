@@ -14,10 +14,11 @@ if sb3_path not in sys.path:
     print("Manually added stable-baselines3 path to sys.path")
 
 class PPOAgent:
-    def __init__(self, bittle, weights, sim_env, joint_states, device="cpu"):
+    def __init__(self, bittle, weights, sim_env, joint_states, device="cpu",log=False):
         self.should_stop = False
         self.device = device
         self.save_dir = os.path.join(os.environ["ISAACSIM_PATH"], "alpha", "checkpoints")
+        self.log_enabled = log  # Set to False to disable logging
         os.makedirs(self.save_dir, exist_ok=True)
 
         self.step_count = 0
@@ -39,21 +40,27 @@ class PPOAgent:
         if latest_ckpt:
             self.model.set_parameters(latest_ckpt["path"])
             self.step_count = latest_ckpt["step"]
-            print(f"[PPO] Loaded checkpoint from {latest_ckpt['path']} at step {self.step_count}", flush=True)
+            self.log(f"[PPO] Loaded checkpoint from {latest_ckpt['path']} at step {self.step_count}", flush=True)
 
         self.policy = self.model.policy
         self.buffer = self.model.rollout_buffer
         self.obs, _ = self.gym_env.reset()
         self.dones = [False]
 
+    def log(self, *args, **kwargs):
+        if self.log_enabled:
+            print(*args, **kwargs)
+
+
     def _load_latest_checkpoint(self, prefix):
+
         files = glob.glob(os.path.join(self.save_dir, f"{prefix}_step_*.pth"))
         if not files:
             return None
         files.sort(key=lambda p: int(p.split("_step_")[-1].split(".")[0]), reverse=True)
         path = files[0]
         step = int(path.split("_step_")[-1].split(".")[0])
-        return {"path": path, "step": step}
+        return {"path": path, "step": int(step)}
 
     def predict_action(self, obs):
         action, _ = self.policy.predict(obs, deterministic=False)
@@ -104,4 +111,4 @@ class PPOAgent:
         self.step_count += step_increment
         path = os.path.join(self.save_dir, f"{prefix}_step_{self.step_count}.pth")
         self.model.save(path)
-        print(f"[PPO] Saved model to {path}", flush=True)
+        self.log(f"[PPO] Saved model to {path}", flush=True)
