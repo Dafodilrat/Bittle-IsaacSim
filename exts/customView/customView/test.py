@@ -126,7 +126,7 @@ class MultiAgentTrainer:
                 raise ValueError(f"Unsupported algorithm: {algo}")
 
             print(f"[DEBUG] Initializing Agent {i} with algo '{algo}'", flush=True)
-            agent = agent_class(weights=weights, bittle=bittle, sim_env=self.sim_env, joint_states=joint_states, device=self.select_training_gpu())
+            agent = agent_class(weights=weights, bittle=bittle, sim_env=self.sim_env, joint_states=joint_states, device=self.select_training_gpu(),log=True)
             obs, _ = agent.gym_env.reset()
             self.agents.append(agent)
 
@@ -141,6 +141,14 @@ class MultiAgentTrainer:
         for episode in range(self.num_episodes):
             print(f"[DEBUG] Starting episode {episode + 1}/{self.num_episodes}", flush=True)
             step_count = 0
+            episode_rewards = [0.0 for _ in self.agents]
+
+            # Log start-of-episode info
+            for i, agent in enumerate(self.agents):
+                info = agent.gym_env.generate_info()
+                print(f"[Agent {i}] Start Info:", flush=True)
+                print(f"  Position : {info['pose']}", flush=True)
+                print(f"  Goal     : {info['goal']}", flush=True)
 
             while step_count < self.steps_per_episode:
                 actions = [agent.predict_action(agent.obs) for agent in self.agents]
@@ -150,29 +158,43 @@ class MultiAgentTrainer:
 
                 self.sim_env.get_world().step(render=True)
 
-                for agent, action in zip(self.agents, actions):
+                for i, (agent, action) in enumerate(zip(self.agents, actions)):
                     agent.post_step(action)
                     agent.train()
+                    episode_rewards[i] += agent.gym_env._last_reward  # reward from gym_env.post_step()
 
                 step_count += 1
                 global_step += 1
 
-            if global_step % self.save_step == 0:
-                print(f"[DEBUG] Saving models at global step {global_step}", flush=True)
-                for i, agent in enumerate(self.agents):
-                    agent.save(step_increment=self.save_step)
+                if global_step % self.save_step == 0:
+                    print(f"[DEBUG] Saving models at global step {global_step}", flush=True)
+                    for i, agent in enumerate(self.agents):
 
+                        agent.save(step_increment=self.save_step)
+
+            # Log end-of-episode summary
+            for i, agent in enumerate(self.agents):
+                info = agent.gym_env.generate_info()
+                print(f"[Agent {i}] Episode {episode + 1} Summary:", flush=True)
+                print(f"  Final Position      : {info['pose']}", flush=True)
+                print(f"  Distance to Goal    : {info['distance_to_goal']:.2f}", flush=True)
+                print(f"  Total Episode Reward: {episode_rewards[i]:.2f}", flush=True)
+
+            # Reset all agents
             print(f"[DEBUG] Episode {episode + 1} complete. Resetting agents...", flush=True)
             for agent in self.agents:
                 agent.reset()
 
         print("[DEBUG] Training complete. Saving final models...", flush=True)
-        
         for i, agent in enumerate(self.agents):
-            agent.save(step_increment=1)  # Save once more with a +1 increment
+            algo = self.agent_algorithms[i].lower()
+            final_path = f"{self.save_file}/{algo}_step_{global_step}.pth"
+            print(f"[DEBUG] Saving final model for {algo} agent {i} to {final_path}", flush=True)
+            agent.save(final_path)
 
 
         print("[DEBUG] Final models saved.", flush=True)
+
 
 
 if __name__ == "__main__":
