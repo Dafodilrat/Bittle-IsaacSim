@@ -162,7 +162,7 @@ class TrainingGround:
         max_x = center[0] + half - margin
         min_y = center[1] - half + margin
         max_y = center[1] + half - margin
-        z = center[2] + 0.2  # No offset
+        z = center[2] + 0.4  # No offset
 
         attempts = 0
         while len(points) < n:
