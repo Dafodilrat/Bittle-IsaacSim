@@ -26,7 +26,7 @@ class DDPGAgent:
             bittle=bittle,
             env=sim_env,
             weights=weights,
-            joint_lock_dict=joint_states
+            joint_lock_dict=joint_states,
             grnd=grnd
         )
 
