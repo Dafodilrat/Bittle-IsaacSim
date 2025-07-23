@@ -14,7 +14,7 @@ if sb3_path not in sys.path:
     print("Manually added stable-baselines3 path to sys.path")
 
 class PPOAgent:
-    def __init__(self, bittle, weights, sim_env, joint_states, device="cpu",log=False):
+    def __init__(self, bittle, weights, sim_env, joint_states, grnd, device="cpu",log=False):
         self.should_stop = False
         self.device = device
         self.save_dir = os.path.join(os.environ["ISAACSIM_PATH"], "alpha", "checkpoints")
@@ -26,7 +26,8 @@ class PPOAgent:
             bittle=bittle,
             env=sim_env,
             weights=weights,
-            joint_lock_dict=joint_states
+            joint_lock_dict=joint_states,
+            grnd= grnd
         )
 
         self.model = PPO(
