@@ -1,7 +1,6 @@
 import gymnasium
 from gymnasium import spaces
 import numpy as np
-from world import Environment
 from pxr import UsdGeom, Gf
 from isaacsim.core.utils.stage import get_current_stage, is_stage_loading
 from isaacsim.core.utils.prims import is_prim_path_valid, get_prim_at_path
@@ -9,11 +8,12 @@ from isaacsim.core.utils.prims import is_prim_path_valid, get_prim_at_path
 
 class gym_env(gymnasium.Env):
 
-    def __init__(self, bittle, env, weights=[100, 10, 10, 0.5, 0.2, 10], joint_lock_dict=None):
+    def __init__(self, bittle, env, grnd, weights=[100, 10, 10, 0.5, 0.2, 10], joint_lock_dict=None):
         super().__init__()
 
         self.weights = weights
         self.bittle = bittle
+        self.grnd = grnd
         self.environment = env
 
         self.joint_lock_dict = joint_lock_dict or {}
@@ -49,7 +49,7 @@ class gym_env(gymnasium.Env):
         self._last_done = False
         self._last_info = {}
         self.goal_marker_path = f"/World/GoalMarker_{self.bittle.robot_prim.split('/')[-1]}"
-        self.create_or_update_goal_marker(self.environment.goal_points[0])
+        self.create_or_update_goal_marker(self.grnd.get_point())
 
 
     def step(self, action):
@@ -75,9 +75,7 @@ class gym_env(gymnasium.Env):
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
 
-        self.current_goal = self.environment.goal_points[
-            np.random.choice(len(self.environment.goal_points))
-        ]
+        self.current_goal = self.grnd.get_point()
 
         self.bittle.reset_simulation()
 
@@ -106,13 +104,16 @@ class gym_env(gymnasium.Env):
         # Check collision with other Bittles
         collided_paths = self.environment.get_collided_bittle_prim_paths()
         self_collided = self.bittle.robot_prim in collided_paths
+        fall = pos[2] < 0  # Check if robot is below ground level
 
         if goal_reached:
             print(f"[TERMINATED] Goal reached by {self.bittle.robot_prim}", flush=True)
         if self_collided:
             print(f"[TERMINATED] Collision detected for {self.bittle.robot_prim}", flush=True)
+        if pos[2] < 0:
+            print(f"[TERMINATED] {self.bittle.robot_prim} fell below ground level", flush=True)
 
-        return goal_reached or self_collided
+        return goal_reached or self_collided or fall
 
 
     def generate_info(self):
