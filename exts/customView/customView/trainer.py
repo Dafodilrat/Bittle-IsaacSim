@@ -31,7 +31,7 @@ class MultiAgentTrainer:
         SimulationApp({
             "headless": self.headless,
             "renderer": renderer_mode,
-            "hide_ui": True,  # Only hide UI if headless
+            "hide_ui": False,  # Only hide UI if headless
             "window_width": 1280,
             "window_height": 720,
         })
@@ -97,7 +97,7 @@ class MultiAgentTrainer:
 
     def setup_environment_and_agents(self):
         
-        from world import Environment
+        from environment import Environment
 
         print("[DEBUG] Setting up environment and agents...", flush=True)
         
@@ -106,6 +106,9 @@ class MultiAgentTrainer:
             self.sim_env = Environment()
             print("[DEBUG] Environment object created", flush=True)
             
+            self.sim_env.add_training_grounds(n=self.num_agents, size=20.0)
+            print(f"[DEBUG] {len(self.sim_env.training_grounds)} training grounds added", flush=True)
+
             self.sim_env.add_bittles(n=self.num_agents)
             print(f"[DEBUG] {self.num_agents} Bittles added", flush=True)
         
@@ -126,7 +129,7 @@ class MultiAgentTrainer:
                 raise ValueError(f"Unsupported algorithm: {algo}")
 
             print(f"[DEBUG] Initializing Agent {i} with algo '{algo}'", flush=True)
-            agent = agent_class(weights=weights, bittle=bittle, sim_env=self.sim_env, joint_states=joint_states, device=self.select_training_gpu(),log=True)
+            agent = agent_class(weights=weights, bittle=bittle, sim_env=self.sim_env, joint_states=joint_states, grnd=self.sim_env.training_grounds[i] ,device=self.select_training_gpu(),log=True)
             obs, _ = agent.gym_env.reset()
             self.agents.append(agent)
 
@@ -203,6 +206,10 @@ if __name__ == "__main__":
     try:
         trainer = MultiAgentTrainer()
         trainer.setup_environment_and_agents()
+        
+        # while omni.kit.app.get_app().is_running():
+        #     omni.kit.app.get_app().update()
+
         trainer.train()
 
     except Exception as e:

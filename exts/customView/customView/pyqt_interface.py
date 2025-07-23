@@ -284,11 +284,16 @@ class RLParamInputGUI(QWidget):
             "joint_states": all_joint_states,
             "algorithms": algorithms,
             "num_agents": self.agent_spinner.value(),
-            "headless": self.headless_checkbox.isChecked()
+            "headless": self.headless_checkbox.isChecked(),
+            "training_mode": self.training_mode_checkbox.isChecked()
         }
 
 
     def initButtons(self):
+
+        self.training_mode_checkbox = QCheckBox("Training Mode (Separate Ground Planes)")
+        self.training_mode_checkbox.setChecked(False)
+        self.control_layout.addWidget(self.training_mode_checkbox)
 
         self.headless_checkbox = QCheckBox("Run in Headless Mode")
         self.headless_checkbox.setChecked(False)  # Default: unchecked
@@ -309,7 +314,7 @@ class RLParamInputGUI(QWidget):
                 json.dump(config, f, indent=2)
 
             setup_script = f"{self.isaac_root}/python.sh"
-            train_script = f"{self.isaac_root}/alpha/exts/customView/customView/test.py"
+            train_script = f"{self.isaac_root}/alpha/exts/customView/customView/trainer.py"
 
             self.proc = subprocess.Popen(
                 [setup_script, train_script],
