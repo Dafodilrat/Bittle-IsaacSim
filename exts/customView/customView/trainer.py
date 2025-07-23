@@ -129,7 +129,7 @@ class MultiAgentTrainer:
                 raise ValueError(f"Unsupported algorithm: {algo}")
 
             print(f"[DEBUG] Initializing Agent {i} with algo '{algo}'", flush=True)
-            agent = agent_class(weights=weights, bittle=bittle, sim_env=self.sim_env, joint_states=joint_states, grnd=self.sim_env.training_grounds[i] ,device=self.select_training_gpu(),log=True)
+            agent = agent_class(weights=weights, bittle=bittle, sim_env=self.sim_env, joint_states=joint_states, grnd=self.sim_env.training_grounds[i] ,device=self.select_training_gpu(),log=False)
             obs, _ = agent.gym_env.reset()
             self.agents.append(agent)
 
