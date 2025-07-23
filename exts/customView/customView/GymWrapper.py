@@ -140,7 +140,7 @@ class gym_env(gymnasium.Env):
         posture_penalty = (max(0, abs(roll) - 0.2) ** 2 + max(0, abs(pitch) - 0.2) ** 2)
         jerk_penalty = np.linalg.norm(delta)
         velocity_penalty = np.sum(np.tanh(np.abs(joint_velocities) / 100))
-        z_penalty = max(0.0, 0.3 - pos[2])
+        z_penalty = max(0.0, abs(-0.2 - pos[2]))
 
         # Upright and smooth movement bonuses
         upright_bonus = np.clip(1.5 - (abs(roll) + abs(pitch)), 0, 1.5)
