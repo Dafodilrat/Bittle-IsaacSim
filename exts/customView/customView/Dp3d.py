@@ -14,14 +14,16 @@ if sb3_path not in sys.path:
     print("Manually added stable-baselines3 path to sys.path")
 
 class DDPGAgent:
-    def __init__(self, bittle, weights, sim_env, joint_states, grnd, device="cpu"):
+    def __init__(self, bittle, weights, sim_env, joint_states, grnd, device="cpu", log=False):
         self.device = device
         self.should_stop = False
-        self.gradient_steps = 1
         self.save_dir = os.path.join(os.environ["ISAACSIM_PATH"], "alpha", "checkpoints")
         os.makedirs(self.save_dir, exist_ok=True)
 
         self.step_count = 0
+        self.log_enabled = log
+        self.log = lambda msg: print(f"[DDPG] {msg}", flush=True) if self.log_enabled else None
+
         self.gym_env = gym_env(
             bittle=bittle,
             env=sim_env,
@@ -32,16 +34,23 @@ class DDPGAgent:
 
         self.model = DDPG(
             policy="MlpPolicy",
-            env=DummyVecEnv([lambda: self.gym_env]),
-            verbose=0,
+            env=self.gym_env,  # No DummyVecEnv
             device=self.device,
+            verbose=1,
+            buffer_size=100_000,
+            batch_size=256,
+            learning_rate=3e-3,
+            tau=0.005,
+            gamma=0.98,
+            train_freq=1,
+            gradient_steps=2,  # Try >1
         )
 
         latest_ckpt = self._load_latest_checkpoint("dp3d")
         if latest_ckpt:
             self.model.set_parameters(latest_ckpt["path"])
             self.step_count = latest_ckpt["step"]
-            print(f"[DDPG] Loaded checkpoint from {latest_ckpt['path']} at step {self.step_count}", flush=True)
+            self.log(f"Loaded checkpoint from {latest_ckpt['path']} at step {self.step_count}")
 
         self.policy = self.model.policy
         self.buffer = self.model.replay_buffer
@@ -78,9 +87,22 @@ class DDPGAgent:
             self.obs, _ = self.gym_env.reset()
 
     def train_if_ready(self):
-        if self.buffer.size() >= self.model.batch_size:
-            self.model.learn(total_timesteps=self.gradient_steps, reset_num_timesteps=False)
-            self.buffer.reset()
+        buffer_size = self.buffer.size()
+        batch_size = self.model.batch_size
+
+        if buffer_size < batch_size:
+            return  # Not enough samples yet
+
+        # Adapt gradient_steps: scale with buffer fullness
+        max_grad_steps = 8  # Upper limit
+        scale = min(1.0, buffer_size / (10 * batch_size))  # Slowly ramps up
+        adaptive_steps = max(1, int(scale * max_grad_steps))
+
+        self.log(f"Buffer size: {buffer_size}, using {adaptive_steps} gradient steps")
+
+        for _ in range(adaptive_steps):
+            self.model.learn(total_timesteps=1, reset_num_timesteps=False)
+
 
     def post_step(self, action):
         obs, reward, done, info = self.gym_env.post_step()
@@ -97,7 +119,6 @@ class DDPGAgent:
 
     def reset(self):
         self.obs, _ = self.gym_env.reset()
-        self.buffer.reset()
 
     def stop_training(self):
         self.should_stop = True
@@ -106,4 +127,4 @@ class DDPGAgent:
         self.step_count += step_increment
         path = os.path.join(self.save_dir, f"{prefix}_step_{self.step_count}.pth")
         self.model.save(path)
-        print(f"[DDPG] Saved model to {path}", flush=True)
+        self.log(f"Saved model to {path}")
