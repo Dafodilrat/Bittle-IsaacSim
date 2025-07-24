@@ -4,7 +4,7 @@ import glob
 import numpy as np
 import torch as th
 
-from stable_baselines3 import DDPG
+from stable_baselines3 import TD3
 from stable_baselines3.common.vec_env import DummyVecEnv
 from GymWrapper import gym_env
 from tools import log
@@ -14,7 +14,7 @@ if sb3_path not in sys.path:
     sys.path.append(sb3_path)
     print("Manually added stable-baselines3 path to sys.path")
 
-class DDPGAgent:
+class TD3Agent:
     def __init__(self, bittle, weights, sim_env, joint_states, grnd, device="cpu", log=False):
         self.should_stop = False
         self.device = device
@@ -31,18 +31,18 @@ class DDPGAgent:
             grnd=grnd
         )
 
-        self.model = DDPG(
+        self.model = TD3(
             policy="MlpPolicy",
             env=DummyVecEnv([lambda: self.gym_env]),
             verbose=0,
             device=self.device
         )
 
-        latest_ckpt = self._load_latest_checkpoint("dp3d")
+        latest_ckpt = self._load_latest_checkpoint("td3")
         if latest_ckpt:
             self.model.set_parameters(latest_ckpt["path"])
             self.step_count = latest_ckpt["step"]
-            self.log(f"[DDPG] Loaded checkpoint from {latest_ckpt['path']} at step {self.step_count}", flush=True)
+            self.log(f"[TD3] Loaded checkpoint from {latest_ckpt['path']} at step {self.step_count}", flush=True)
 
         self.policy = self.model.policy
         self.buffer = self.model.replay_buffer
@@ -86,14 +86,15 @@ class DDPGAgent:
             self.post_step(action)
 
     def train(self):
+        # Train the model if enough transitions are collected
         if self.buffer.size() >= self.model.batch_size:
             self.model.train(batch_size=self.model.batch_size)
 
     def stop_training(self):
         self.should_stop = True
 
-    def save(self, step_increment=1, prefix="dp3d"):
+    def save(self, step_increment=1, prefix="td3"):
         self.step_count += step_increment
         path = os.path.join(self.save_dir, f"{prefix}_step_{self.step_count}.pth")
         self.model.save(path)
-        self.log(f"[DDPG] Saved model to {path}", flush=True)
+        self.log(f"[TD3] Saved model to {path}", flush=True)

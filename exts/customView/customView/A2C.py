@@ -4,7 +4,7 @@ import glob
 import numpy as np
 import torch as th
 
-from stable_baselines3 import DDPG
+from stable_baselines3 import A2C
 from stable_baselines3.common.vec_env import DummyVecEnv
 from GymWrapper import gym_env
 from tools import log
@@ -14,7 +14,7 @@ if sb3_path not in sys.path:
     sys.path.append(sb3_path)
     print("Manually added stable-baselines3 path to sys.path")
 
-class DDPGAgent:
+class A2CAgent:
     def __init__(self, bittle, weights, sim_env, joint_states, grnd, device="cpu", log=False):
         self.should_stop = False
         self.device = device
@@ -31,21 +31,21 @@ class DDPGAgent:
             grnd=grnd
         )
 
-        self.model = DDPG(
+        self.model = A2C(
             policy="MlpPolicy",
             env=DummyVecEnv([lambda: self.gym_env]),
             verbose=0,
             device=self.device
         )
 
-        latest_ckpt = self._load_latest_checkpoint("dp3d")
+        latest_ckpt = self._load_latest_checkpoint("a2c")
         if latest_ckpt:
             self.model.set_parameters(latest_ckpt["path"])
             self.step_count = latest_ckpt["step"]
-            self.log(f"[DDPG] Loaded checkpoint from {latest_ckpt['path']} at step {self.step_count}", flush=True)
+            self.log(f"[A2C] Loaded checkpoint from {latest_ckpt['path']} at step {self.step_count}", flush=True)
 
         self.policy = self.model.policy
-        self.buffer = self.model.replay_buffer
+        self.buffer = self.model.rollout_buffer
         self.obs, _ = self.gym_env.reset()
         self.dones = [False]
 
@@ -66,15 +66,24 @@ class DDPGAgent:
         action, _ = self.policy.predict(obs, deterministic=False)
         return action
 
-    def add_to_buffer(self, obs, action, reward, done, next_obs):
-        self.buffer.add(obs, next_obs, action, reward, done)
+    def add_to_buffer(self, obs, action, reward, done, value=None, log_prob=None):
+        obs_tensor = th.as_tensor(obs).float().to(self.model.device).unsqueeze(0)
+
+        if value is None:
+            value = self.policy.predict_values(obs_tensor)
+
+        if log_prob is None:
+            action_tensor = th.as_tensor(action).float().to(self.model.device).unsqueeze(0)
+            log_prob = self.policy.get_distribution(obs_tensor).log_prob(action_tensor)
+
+        self.buffer.add(obs, action, reward, done, value.detach(), log_prob.detach())
 
     def reset(self):
         self.obs, _ = self.gym_env.reset()
 
     def post_step(self, action):
         obs, reward, done, info = self.gym_env.post_step()
-        self.add_to_buffer(self.obs, action, reward, done, obs)
+        self.add_to_buffer(self.obs, action, reward, done)
         self.obs = obs
         if done:
             self.obs, _ = self.gym_env.reset()
@@ -86,14 +95,15 @@ class DDPGAgent:
             self.post_step(action)
 
     def train(self):
-        if self.buffer.size() >= self.model.batch_size:
-            self.model.train(batch_size=self.model.batch_size)
+        if self.buffer.full:
+            self.model.policy.train()
+            self.buffer.reset()
 
     def stop_training(self):
         self.should_stop = True
 
-    def save(self, step_increment=1, prefix="dp3d"):
+    def save(self, step_increment=1, prefix="a2c"):
         self.step_count += step_increment
         path = os.path.join(self.save_dir, f"{prefix}_step_{self.step_count}.pth")
         self.model.save(path)
-        self.log(f"[DDPG] Saved model to {path}", flush=True)
+        self.log(f"[A2C] Saved model to {path}", flush=True)
