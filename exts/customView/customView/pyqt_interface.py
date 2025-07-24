@@ -215,7 +215,7 @@ class RLParamInputGUI(QWidget):
 
             from PyQt5.QtWidgets import QComboBox
             algo_combo = QComboBox()
-            algo_combo.addItems(["ppo", "dp3d"])
+            algo_combo.addItems(["ppo", "dp3d", "td3", "a2c"])
 
             tab = QWidget()
             vbox = QVBoxLayout()
