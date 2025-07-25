@@ -1,47 +1,36 @@
 import os
 import time
-import pynvml
 import torch as th
 import omni.kit.app
 
+from omni.isaac.core.simulation_context import SimulationContext
 from isaacsim.core.utils.prims import is_prim_path_valid
+from pxr import Gf
 
-
-def log(*args, flush=True, **kwargs):
-    """Safe logging utility used across agent and trainer scripts."""
-    print(*args, **kwargs, flush=flush)
-
+def log(msg, flush=False):
+    if flush:
+        print(msg, flush=True)
 
 def ensure_dir_exists(path):
-    """Create directory if it does not exist."""
-    os.makedirs(path, exist_ok=True)
-
+    """Ensure a directory exists."""
+    if not os.path.exists(path):
+        os.makedirs(path)
 
 def get_free_gpu():
-    """Return the ID of the GPU with most free memory. Defaults to CPU if no GPU is available."""
-    if not th.cuda.is_available():
-        return "cpu"
+    """Return 'cuda' if GPU is available, otherwise 'cpu'."""
+    return "cuda" if th.cuda.is_available() else "cpu"
 
-    pynvml.nvmlInit()
-    device_count = pynvml.nvmlDeviceGetCount()
-
-    free_gpus = []
-    for i in range(device_count):
-        handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-        used_ratio = mem_info.used / mem_info.total
-        free_gpus.append((i, used_ratio))
-
-    pynvml.nvmlShutdown()
-    best_gpu = sorted(free_gpus, key=lambda x: x[1])[0][0]
-    return f"cuda:{best_gpu}"
-
+def wait_for_prim(path, timeout=5.0):
+    """Wait for a given prim path to become valid on stage."""
+    from isaacsim.core.utils.prims import is_prim_path_valid
+    start_time = time.time()
+    while not is_prim_path_valid(path):
+        if time.time() - start_time > timeout:
+            raise TimeoutError(f"Timeout waiting for prim at path: {path}")
+        time.sleep(0.05)
 
 def wait_for_stage_ready(timeout=10.0):
-    """
-    Waits for the USD stage to finish loading and for the timeline to initialize.
-    Safe to call before simulation or prim creation.
-    """
+    """Wait until Isaac Sim stage is loaded and timeline is initialized."""
     from isaacsim.core.utils.stage import is_stage_loading
     app = omni.kit.app.get_app()
     timeline = omni.timeline.get_timeline_interface()
@@ -50,18 +39,18 @@ def wait_for_stage_ready(timeout=10.0):
     while is_stage_loading() or not timeline:
         if time.time() - t0 > timeout:
             raise RuntimeError("Timeout waiting for stage to be ready")
-        log("[TOOLS] Waiting for stage to load...", flush=True)
+        log("[ENV] Waiting for stage...", flush=True)
         app.update()
         time.sleep(0.1)
-    log("[TOOLS] Stage ready.", flush=True)
 
-
-def wait_for_prim(path, timeout=5.0):
-    """
-    Waits for a USD prim to appear at the specified path.
-    """
+def wait_for_physics(timeout=5.0, prim_path="/World/PhysicsScene", flush=False):
+    """Wait for physics context to be ready at given prim path."""
+    sim = SimulationContext(physics_prim_path=prim_path)
     t0 = time.time()
-    while not is_prim_path_valid(path):
+    while sim.physics_sim_view is None or sim._physics_context is None:
+        sim.initialize_physics()
         if time.time() - t0 > timeout:
-            raise RuntimeError(f"Timed out waiting for prim: {path}")
-        time.sleep(0.05)
+            raise RuntimeError(f"Timeout waiting for physics context at {prim_path}")
+        if flush:
+            print(f"[WAIT] Waiting for physics at {prim_path}...", flush=True)
+        time.sleep(0.1)

@@ -5,12 +5,11 @@ from isaacsim.core.api import World, PhysicsContext
 from pxr import UsdGeom, UsdPhysics, PhysxSchema, UsdShade, UsdLux, Gf
 from isaacsim.core.utils.stage import get_current_stage, is_stage_loading
 from isaacsim.core.utils.prims import is_prim_path_valid, get_prim_at_path
-from isaacsim.core.api.objects.ground_plane import GroundPlane
 from omni.isaac.core.simulation_context import SimulationContext
 
 from Bittle import Bittle
 from TrainingGround import TrainingGround
-from tools import wait_for_prim, wait_for_stage_ready
+from tools import wait_for_prim, wait_for_stage_ready, wait_for_physics
 
 class Environment:
     _instance = None
@@ -62,30 +61,13 @@ class Environment:
         self.clear_stage()
         wait_for_stage_ready()
         self.context = SimulationContext(physics_prim_path=self.physics)
-        self.wait_for_physics_context()
+        wait_for_physics(prim_path=self.physics)
         print("[ENV] Environment initialization complete!")
-
-    def wait_for_physics_context(self, timeout=10.0):
-        app = omni.kit.app.get_app()
-        t0 = time.time()
-        while True:
-            app.update()
-            if self.context and hasattr(self.context, '_physics_context') and self.context._physics_context is not None:
-                print("[ENV] Physics context ready!")
-                break
-            if time.time() - t0 > timeout:
-                raise RuntimeError("Timeout waiting for physics context")
-            print("[ENV] Waiting for physics context...", flush=True)
-            time.sleep(0.1)
 
     def clear_stage(self):
         omni.usd.get_context().new_stage()
         self.stage = omni.usd.get_context().get_stage()
-
-        while is_stage_loading():
-            print("[Environment] Waiting for stage to finish loading", flush=True)
-            time.sleep(0.1)
-
+        wait_for_stage_ready()
         self._define_world_prim()
         self._define_physics_scene()
         self.create_colored_dome_light()
@@ -117,8 +99,9 @@ class Environment:
                 print(f"[Environment] Error creating training ground {i}:", e)
                 import traceback
                 traceback.print_exc()
+        self.world.reset()
 
-    def add_bittles(self, n=1):
+    def add_bittles(self, n=1, flush=False):
         """
         Spawn `n` Bittle robots, each on a unique training ground.
         """
@@ -133,7 +116,7 @@ class Environment:
                 ground = self.training_grounds[idx]
                 spawn = ground.get_point()
 
-                b = Bittle(id=idx, cords=spawn, world=self.world)
+                b = Bittle(id=idx, cords=spawn, world=self.world,flush=flush)
                 b.spawn_bittle()
                 b.set_articulation()
                 self.world.step(render=True)
@@ -144,6 +127,7 @@ class Environment:
                 print(f"[Environment] Error adding bittle {idx}:", e)
                 import traceback
                 traceback.print_exc()
+        self.world.reset()
 
     def create_colored_dome_light(self, path="/Environment/DomeLight", color=(0.4, 0.6, 1.0), intensity=5000.0):
         if not is_prim_path_valid(path):

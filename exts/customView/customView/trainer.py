@@ -6,7 +6,7 @@ import traceback
 import omni.kit.app
 import torch as th
 
-from tools import get_free_gpu, ensure_dir_exists, log, wait_for_prim, wait_for_stage_ready
+# Delay tools import until after SimulationApp is initialized
 
 class MultiAgentTrainer:
     """
@@ -14,9 +14,6 @@ class MultiAgentTrainer:
     Responsible for environment setup, agent initialization, episode scheduling, and checkpointing.
     """
     def __init__(self, config_file="params.json"):
-        log("[DEBUG] MultiAgentTrainer.__init__ started", True)
-
-        # === Config and state ===
         self.config_file = config_file
         self.agents = []
         self.sim_env = None
@@ -24,7 +21,6 @@ class MultiAgentTrainer:
         self.num_episodes = 100
         self.save_file = os.path.join(os.environ.get("ISAACSIM_PATH"), "alpha", "checkpoints")
         self.save_step = 10000
-        ensure_dir_exists(self.save_file)
 
         # === Load configuration from JSON ===
         self.load_config()
@@ -38,13 +34,22 @@ class MultiAgentTrainer:
             "window_width": 1280,
             "window_height": 720,
         })
-        log(f"[DEBUG] SimulationApp initialized (headless={self.headless}, renderer={renderer_mode})", True)
 
-        # === Import agent types ===
+        # === Now safe to import tools ===
+        from tools import get_free_gpu, ensure_dir_exists, log, wait_for_stage_ready
+        self.get_free_gpu = get_free_gpu
+        self.ensure_dir_exists = ensure_dir_exists
+        self.log = log
+        self.wait_for_stage_ready = wait_for_stage_ready
+
+        self.log("[DEBUG] MultiAgentTrainer.__init__ started", True)
+        self.ensure_dir_exists(self.save_file)
+        self.log(f"[DEBUG] SimulationApp initialized (headless={self.headless}, renderer={renderer_mode})", True)
+
         from PPO import PPOAgent
         from Dp3d import DDPGAgent
-        from td3_agent import TD3Agent
-        from a2c_agent import A2CAgent
+        from Td3 import TD3Agent
+        from A2C import A2CAgent
 
         self.agent_classes = {
             "ppo": PPOAgent,
@@ -55,7 +60,6 @@ class MultiAgentTrainer:
 
     def load_config(self):
         """Parse agent and simulation parameters from config JSON file."""
-        log(f"[DEBUG] Loading config file: {self.config_file}", True)
         if not os.path.exists(self.config_file):
             raise FileNotFoundError(f"Parameter file '{self.config_file}' not found.")
 
@@ -70,27 +74,26 @@ class MultiAgentTrainer:
         self.num_episodes = config.get("num_episodes", self.num_episodes)
         self.headless = config.get("headless", False)
 
-        log("[DEBUG] Config values loaded:", True)
-        log(json.dumps(config, indent=2), True)
+        print("[DEBUG] Config values loaded:", flush=True)
+        print(json.dumps(config, indent=2), flush=True)
 
     def setup_environment_and_agents(self):
-        """Instantiate the simulation environment and all agent instances."""
         from environment import Environment
 
-        log("[DEBUG] Setting up environment and agents...", True)
+        self.log("[DEBUG] Setting up environment and agents...", True)
 
         try:
             self.sim_env = Environment()
-            log("[DEBUG] Environment object created", True)
+            self.log("[DEBUG] Environment object created", True)
 
             self.sim_env.add_training_grounds(n=self.num_agents, size=20.0)
-            log(f"[DEBUG] {len(self.sim_env.training_grounds)} training grounds added", True)
+            self.log(f"[DEBUG] {len(self.sim_env.training_grounds)} training grounds added", True)
 
             self.sim_env.add_bittles(n=self.num_agents)
-            log(f"[DEBUG] {self.num_agents} Bittles added", True)
+            self.log(f"[DEBUG] {self.num_agents} Bittles added", True)
 
         except Exception as e:
-            log("[ERROR] Error setting up environment or spawning agents", True)
+            self.log("[ERROR] Error setting up environment or spawning agents", True)
             traceback.print_exc()
 
         self.agents.clear()
@@ -104,41 +107,38 @@ class MultiAgentTrainer:
             if agent_class is None:
                 raise ValueError(f"Unsupported algorithm: {algo}")
 
-            log(f"[DEBUG] Initializing Agent {i} with algo '{algo}'", True)
+            self.log(f"[DEBUG] Initializing Agent {i} with algo '{algo}'", True)
             agent = agent_class(
                 weights=weights,
                 bittle=bittle,
                 sim_env=self.sim_env,
                 joint_states=joint_states,
                 grnd=self.sim_env.training_grounds[i],
-                device=get_free_gpu(),
+                device=self.get_free_gpu(),
                 log=False
             )
             obs, _ = agent.gym_env.reset()
             self.agents.append(agent)
 
-        log("[DEBUG] All agents set up", True)
+        self.log("[DEBUG] All agents set up", True)
 
     def train(self):
-        """Main training loop across all episodes."""
-        log("[DEBUG] Training started", True)
-        wait_for_stage_ready()
+        self.log("[DEBUG] Training started", True)
+        self.wait_for_stage_ready()
 
         global_step = 0
 
         for episode in range(self.num_episodes):
-            log(f"[DEBUG] Starting episode {episode + 1}/{self.num_episodes}", True)
+            self.log(f"[DEBUG] Starting episode {episode + 1}/{self.num_episodes}", True)
             step_count = 0
             episode_rewards = [0.0 for _ in self.agents]
 
-            # === Initial info log ===
             for i, agent in enumerate(self.agents):
                 info = agent.gym_env.generate_info()
-                log(f"[Agent {i}] Start Info:", True)
-                log(f"  Position : {info['pose']}", True)
-                log(f"  Goal     : {info['goal']}", True)
+                self.log(f"[Agent {i}] Start Info:", True)
+                self.log(f"  Position : {info['pose']}", True)
+                self.log(f"  Goal     : {info['goal']}", True)
 
-            # === Step loop ===
             while step_count < self.steps_per_episode:
                 actions = [agent.predict_action(agent.obs) for agent in self.agents]
 
@@ -156,40 +156,35 @@ class MultiAgentTrainer:
                 global_step += 1
 
                 if global_step % self.save_step == 0:
-                    log(f"[DEBUG] Saving models at global step {global_step}", True)
+                    self.log(f"[DEBUG] Saving models at global step {global_step}", True)
                     for i, agent in enumerate(self.agents):
                         agent.save(step_increment=self.save_step)
 
-            # === End-of-episode summary ===
             for i, agent in enumerate(self.agents):
                 info = agent.gym_env.generate_info()
-                log(f"[Agent {i}] Episode {episode + 1} Summary:", True)
-                log(f"  Final Position      : {info['pose']}", True)
-                log(f"  Distance to Goal    : {info['distance_to_goal']:.2f}", True)
-                log(f"  Total Episode Reward: {episode_rewards[i]:.2f}", True)
+                self.log(f"[Agent {i}] Episode {episode + 1} Summary:", True)
+                self.log(f"  Final Position      : {info['pose']}", True)
+                self.log(f"  Distance to Goal    : {info['distance_to_goal']:.2f}", True)
+                self.log(f"  Total Episode Reward: {episode_rewards[i]:.2f}", True)
 
-            # === Reset all agents ===
-            log(f"[DEBUG] Episode {episode + 1} complete. Resetting agents...", True)
+            self.log(f"[DEBUG] Episode {episode + 1} complete. Resetting agents...", True)
             for agent in self.agents:
                 agent.reset()
 
-        # === Save final model ===
-        log("[DEBUG] Training complete. Saving final models...", True)
+        self.log("[DEBUG] Training complete. Saving final models...", True)
         for i, agent in enumerate(self.agents):
             algo = self.agent_algorithms[i].lower()
             final_path = f"{self.save_file}/{algo}_step_{global_step}.pth"
-            log(f"[DEBUG] Saving final model for {algo} agent {i} to {final_path}", True)
+            self.log(f"[DEBUG] Saving final model for {algo} agent {i} to {final_path}", True)
             agent.save(final_path)
 
-        log("[DEBUG] Final models saved.", True)
+        self.log("[DEBUG] Final models saved.", True)
 
 
 if __name__ == "__main__":
-    log("[DEBUG] Starting training script", True)
     try:
         trainer = MultiAgentTrainer()
         trainer.setup_environment_and_agents()
         trainer.train()
     except Exception as e:
-        log("[FATAL] Unhandled exception during training:", True)
         traceback.print_exc()

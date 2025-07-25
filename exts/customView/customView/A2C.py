@@ -1,13 +1,14 @@
 import os
 import sys
 import glob
+from cv2 import log
 import numpy as np
 import torch as th
 
 from stable_baselines3 import A2C
 from stable_baselines3.common.vec_env import DummyVecEnv
 from GymWrapper import gym_env
-from tools import log
+from tools import log as logger
 
 sb3_path = os.environ.get("ISAACSIM_PATH") + "/kit/python/lib/python3.10/site-packages"
 if sb3_path not in sys.path:
@@ -15,11 +16,12 @@ if sb3_path not in sys.path:
     print("Manually added stable-baselines3 path to sys.path")
 
 class A2CAgent:
-    def __init__(self, bittle, weights, sim_env, joint_states, grnd, device="cpu", log=False):
+    def __init__(self, bittle, weights, sim_env, joint_states, grnd, device="cpu", log = False):
         self.should_stop = False
         self.device = device
-        self.log_enabled = log
         self.save_dir = os.path.join(os.environ["ISAACSIM_PATH"], "alpha", "checkpoints")
+        self.log = logger
+        self.log_enabled = log
         os.makedirs(self.save_dir, exist_ok=True)
 
         self.step_count = 0
@@ -35,23 +37,19 @@ class A2CAgent:
             policy="MlpPolicy",
             env=DummyVecEnv([lambda: self.gym_env]),
             verbose=0,
-            device=self.device
+            device="cpu"
         )
 
         latest_ckpt = self._load_latest_checkpoint("a2c")
         if latest_ckpt:
             self.model.set_parameters(latest_ckpt["path"])
             self.step_count = latest_ckpt["step"]
-            self.log(f"[A2C] Loaded checkpoint from {latest_ckpt['path']} at step {self.step_count}", flush=True)
+            self.log(f"[A2C] Loaded checkpoint from {latest_ckpt['path']} at step {self.step_count}", flush=self.log_enabled)
 
         self.policy = self.model.policy
         self.buffer = self.model.rollout_buffer
         self.obs, _ = self.gym_env.reset()
         self.dones = [False]
-
-    def log(self, *args, **kwargs):
-        if self.log_enabled:
-            print(*args, **kwargs)
 
     def _load_latest_checkpoint(self, prefix):
         files = glob.glob(os.path.join(self.save_dir, f"{prefix}_step_*.pth"))
@@ -106,4 +104,4 @@ class A2CAgent:
         self.step_count += step_increment
         path = os.path.join(self.save_dir, f"{prefix}_step_{self.step_count}.pth")
         self.model.save(path)
-        self.log(f"[A2C] Saved model to {path}", flush=True)
+        self.log(f"[A2C] Saved model to {path}", flush=self.log_enabled)

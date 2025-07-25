@@ -16,7 +16,7 @@ class SensorTest:
         self.agents = []
         self.sim_env = None
         self.headless = False  # Set to True for headless mode
-
+        
         # Setup SimulationApp after config is loaded
         renderer_mode = "None" if self.headless else "Hybrid"
         
@@ -29,6 +29,9 @@ class SensorTest:
         })
         print(f"[DEBUG] SimulationApp initialized (headless={self.headless}, renderer={renderer_mode})", flush=True)
         
+        from tools import log 
+        self.log = log
+
     def wait_for_stage_ready(self, timeout=10.0):
 
         print("[DEBUG] Waiting for stage to be ready...", flush=True)
@@ -45,27 +48,30 @@ class SensorTest:
             time.sleep(0.1)
         print("[DEBUG] Stage is ready.", flush=True)
 
-    def setup_environment_and_agents(self):
-        
-        from world import Environment
 
-        print("[DEBUG] Setting up environment and agents...", flush=True)
-        
+    def setup_environment_and_agents(self):
+        from environment import Environment
+
+        self.log("[DEBUG] Setting up environment and agents...", True)
+
         try:
-            
             self.sim_env = Environment()
-            print("[DEBUG] Environment object created", flush=True)
-            
-            self.sim_env.add_bittles(n=1)
-            print(f"[DEBUG] Bittles added", flush=True)
-        
+            self.log("[DEBUG] Environment object created", True)
+
+            self.sim_env.add_training_grounds(n=1, size=20.0)
+            self.log(f"[DEBUG] {len(self.sim_env.training_grounds)} training grounds added", True)
+
+            self.sim_env.add_bittles(n=1,flush=True)
+            self.log(f"[DEBUG] {1} Bittles added", True)
+
         except Exception as e:
-            print("[ERROR] Error setting up environment or spawning agents", flush=True)
+            self.log("[ERROR] Error setting up environment or spawning agents", True)
             traceback.print_exc()
 
         self.agents.clear()
 
-        print("[DEBUG] All agents set up", flush=True)
+        self.log("[DEBUG] All agents set up", True)
+
 
 
 if __name__ == "__main__":
