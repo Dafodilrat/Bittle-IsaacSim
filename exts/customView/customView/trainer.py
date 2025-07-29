@@ -18,9 +18,9 @@ class MultiAgentTrainer:
         self.agents = []
         self.sim_env = None
         self.steps_per_episode = 1000
-        self.num_episodes = 100
+        self.num_episodes = 10000
         self.save_file = os.path.join(os.environ.get("ISAACSIM_PATH"), "alpha", "checkpoints")
-        self.save_step = 10000
+        self.save_every_n_episodes = 100  # ← Save every 10 episodes
 
         # === Load configuration from JSON ===
         self.load_config()
@@ -155,10 +155,11 @@ class MultiAgentTrainer:
                 step_count += 1
                 global_step += 1
 
-                if global_step % self.save_step == 0:
-                    self.log(f"[DEBUG] Saving models at global step {global_step}", True)
-                    for i, agent in enumerate(self.agents):
-                        agent.save(step_increment=self.save_step)
+            if (episode + 1) % self.save_every_n_episodes == 0:
+                for i, agent in enumerate(self.agents):
+                    path = os.path.join(self.save_file, f"{self.agent_algorithms[i].lower()}_step_{global_step}.pth")
+                    agent.model.save(path)
+                    self.log(f"[DEBUG] Saved model for {self.agent_algorithms[i].lower()} agent {i} at global step {global_step} to {path}", True)
 
             for i, agent in enumerate(self.agents):
                 info = agent.gym_env.generate_info()
