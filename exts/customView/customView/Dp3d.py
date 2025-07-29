@@ -37,6 +37,10 @@ class DDPGAgent:
         self.global_step = 0
         self.gradient_steps = 1
 
+        if "cuda" in self.device:
+            device_idx = int(self.device.split(":")[-1])
+            th.cuda.set_device(device_idx)
+
         self.gym_env = gym_env(
             bittle=bittle,
             env=sim_env,

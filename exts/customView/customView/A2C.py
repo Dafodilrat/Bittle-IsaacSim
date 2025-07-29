@@ -18,7 +18,7 @@ if sb3_path not in sys.path:
 class A2CAgent:
     def __init__(self, bittle, weights, sim_env, joint_states, grnd, device="cpu", log = False):
         self.should_stop = False
-        self.device = device
+        self.device = "cpu"
         self.save_dir = os.path.join(os.environ["ISAACSIM_PATH"], "alpha", "checkpoints")
         self.log = logger
         self.log_enabled = log
@@ -32,6 +32,10 @@ class A2CAgent:
             joint_lock_dict=joint_states,
             grnd=grnd
         )
+
+        if "cuda" in self.device:
+            device_idx = int(self.device.split(":")[-1])
+            th.cuda.set_device(device_idx)
 
         self.model = A2C(
             policy="MlpPolicy",

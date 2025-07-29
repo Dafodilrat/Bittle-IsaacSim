@@ -7,6 +7,9 @@ from omni.isaac.core.simulation_context import SimulationContext
 from isaacsim.core.utils.prims import is_prim_path_valid
 from pxr import Gf
 
+import torch as th
+import pynvml
+
 def log(msg, flush=False):
     if flush:
         print(msg, flush=True)
@@ -17,8 +20,40 @@ def ensure_dir_exists(path):
         os.makedirs(path)
 
 def get_free_gpu():
-    """Return 'cuda' if GPU is available, otherwise 'cpu'."""
-    return "cuda" if th.cuda.is_available() else "cpu"
+    """
+    Selects the best available GPU by considering both memory and compute usage.
+    Returns 'cuda:X' or 'cpu' if no GPU is available.
+    """
+    if not th.cuda.is_available():
+        return "cpu"
+
+    try:
+        pynvml.nvmlInit()
+        device_count = pynvml.nvmlDeviceGetCount()
+        best_gpu = None
+        best_score = float('-inf')
+
+        for i in range(device_count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+            mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+
+            mem_free_ratio = mem.free / mem.total
+            util_score = 1.0 - util.gpu / 100.0  # 1 = unused, 0 = fully busy
+
+            score = mem_free_ratio * 0.7 + util_score * 0.3  # weight memory more
+
+            if score > best_score:
+                best_score = score
+                best_gpu = i
+
+        pynvml.nvmlShutdown()
+        return f"cuda:{best_gpu}"
+
+    except Exception as e:
+        print(f"[get_free_gpu] Error: {e}")
+        return "cuda" if th.cuda.is_available() else "cpu"
+
 
 def wait_for_prim(path, timeout=5.0):
     """Wait for a given prim path to become valid on stage."""

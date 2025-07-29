@@ -45,6 +45,10 @@ class TD3Agent:
             grnd=grnd
         )
 
+        if "cuda" in self.device:
+            device_idx = int(self.device.split(":")[-1])
+            th.cuda.set_device(device_idx)
+
         self.model = TD3(
             policy="MlpPolicy",
             env=DummyVecEnv([lambda: self.gym_env]),

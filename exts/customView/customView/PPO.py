@@ -19,7 +19,7 @@ class PPOAgent:
     def __init__(self, bittle, weights, sim_env, joint_states, grnd, device="cpu", log=False):
         # Initialize PPO agent with Gym environment and checkpoint management
         self.should_stop = False
-        self.device = device
+        self.device = "cpu"
         self.log = logger
         self.log_enabled = log
         self.save_dir = os.path.join(os.environ["ISAACSIM_PATH"], "alpha", "checkpoints")
@@ -33,6 +33,10 @@ class PPOAgent:
             joint_lock_dict=joint_states,
             grnd=grnd
         )
+
+        if "cuda" in self.device:
+            device_idx = int(self.device.split(":")[-1])
+            th.cuda.set_device(device_idx)
 
         # Setup PPO model from Stable Baselines3
         self.model = PPO(
