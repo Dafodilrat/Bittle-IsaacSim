@@ -314,23 +314,24 @@ class RLParamInputGUI(QWidget):
                 json.dump(config, f, indent=2)
 
             setup_script = f"{self.isaac_root}/python.sh"
-            train_script = f"{self.isaac_root}/alpha/exts/customView/customView/trainer.py"
+            
+            # Decide whether to run trainer or demo
+            if config.get("training_mode", False):
+                target_script = f"{self.isaac_root}/alpha/exts/customView/customView/trainer.py"
+            else:
+                target_script = f"{self.isaac_root}/alpha/exts/customView/customView/demo.py"
 
             self.proc = subprocess.Popen(
-                [setup_script, train_script],
+                [setup_script, target_script],
                 preexec_fn=os.setsid
             )
-
-            # self.proc = subprocess.Popen(
-            #     f"{self.isaac_root}/isaac-sim.sh",
-            #     preexec_fn=os.setsid
-            # )
 
             self.train_btn.setEnabled(False)   # 🔒 Disable Start
             self.stop_btn.setEnabled(True)     # 🔓 Enable Stop
 
         except Exception as e:
             QMessageBox.critical(self, "Execution Error", f"Unexpected error: {e}")
+
 
 
     def stopTrainer(self):
