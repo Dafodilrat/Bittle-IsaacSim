@@ -15,6 +15,9 @@ class TrainingGround:
     _next_index = 0
     _grid_size = 1
 
+    sync = False             
+    _sync_seed = 42          
+
     def __init__(self, size=10.0, color=(0.0, 0.0, 0.0)):
         self.size = size
         self.color = color
@@ -30,6 +33,13 @@ class TrainingGround:
         self.set_visuals()
         self.set_friction_coeffs()
         self.register_bounds()
+    
+    @staticmethod
+    def set_sync(enabled=True, seed=42):
+        TrainingGround.sync = enabled
+        TrainingGround._sync_seed = seed
+        print(f"[TrainingGround] Sync {'enabled' if enabled else 'disabled'} with seed={seed}")
+
 
     def _auto_reserve(self):
         i = TrainingGround._next_index
@@ -146,41 +156,50 @@ class TrainingGround:
         return Gf.Vec3d(0, 0, 0)
 
 
-
     def generate_points(self, n=10, spacing=None, margin=1.5):
         """
-        Uniformly samples `n` points inside the ground tile's XY area.
+        Uniformly samples `n` points within the local XY area of the ground tile.
 
+        - Points are sampled in local tile coordinates centered at (0, 0),
+        then translated using the ground tile’s world offset.
         - If `spacing` is set, ensures minimum distance between points.
-        - `margin` shrinks the sampling area inward from each edge.
         """
+        if TrainingGround.sync:
+            random.seed(TrainingGround._sync_seed)
+
         points = []
-        center = self.get_world_translation()
         half = self.size / 2.0
 
-        min_x = center[0] - half + margin
-        max_x = center[0] + half - margin
-        min_y = center[1] - half + margin
-        max_y = center[1] + half - margin
-        z = center[2] + 0.4  # No offset
+        # Local sampling bounds (centered at 0,0)
+        min_x = -half + margin
+        max_x = +half - margin
+        min_y = -half + margin
+        max_y = +half - margin
+        z_local = 0.4  # relative to tile height
+
+        # Get world-space tile offset
+        center = self.get_world_translation()
+        x_offset, y_offset, z_offset = center[0], center[1], center[2]
 
         attempts = 0
+        
         while len(points) < n:
             x = random.uniform(min_x, max_x)
             y = random.uniform(min_y, max_y)
-            pt = (x, y, z)
+            pt_local = (x, y)
 
-            if spacing is None or all(np.linalg.norm(np.array(pt[:2]) - np.array(p[:2])) >= spacing for p in points):
-                points.append(pt)
+            # Check spacing against already accepted local points
+            if spacing is None or all(
+                np.linalg.norm(np.array(pt_local) - np.array(p[:2])) >= spacing for p in points
+            ):
+                # Convert to world coordinates and append
+                pt_world = (x + x_offset, y + y_offset, z_local + z_offset)
+                points.append(pt_world)
 
             attempts += 1
             if attempts > 500:
                 raise RuntimeError(f"[TrainingGround] Failed to sample {n} spaced points for {self.path}")
-
         self._point_cache = points
-        print(f"[TrainingGround] {self.path}: sampled {n} points inside tile with margin={margin}")
-
-
 
     def get_point(self, spacing=None, density_per_m2=0.5):
         """

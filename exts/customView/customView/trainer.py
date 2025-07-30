@@ -155,11 +155,9 @@ class MultiAgentTrainer:
                 step_count += 1
                 global_step += 1
 
-            if (episode + 1) % self.save_every_n_episodes == 0:
-                for i, agent in enumerate(self.agents):
-                    path = os.path.join(self.save_file, f"{self.agent_algorithms[i].lower()}_step_{global_step}.pth")
-                    agent.model.save(path)
-                    self.log(f"[DEBUG] Saved model for {self.agent_algorithms[i].lower()} agent {i} at global step {global_step} to {path}", True)
+        if (episode + 1) % self.save_every_n_episodes == 0:
+            for i, agent in enumerate(self.agents):
+                agent.save(step_increment=self.steps_per_episode, prefix=self.agent_algorithms[i].lower())
 
             for i, agent in enumerate(self.agents):
                 info = agent.gym_env.generate_info()
@@ -172,12 +170,8 @@ class MultiAgentTrainer:
             for agent in self.agents:
                 agent.reset()
 
-        self.log("[DEBUG] Training complete. Saving final models...", True)
-        for i, agent in enumerate(self.agents):
-            algo = self.agent_algorithms[i].lower()
-            final_path = f"{self.save_file}/{algo}_step_{global_step}.pth"
-            self.log(f"[DEBUG] Saving final model for {algo} agent {i} to {final_path}", True)
-            agent.save(final_path)
+        self.log(f"[DEBUG] Saving final model for {algo} agent {i}", True)
+        agent.save(step_increment=0, prefix=algo)
 
         self.log("[DEBUG] Final models saved.", True)
 
