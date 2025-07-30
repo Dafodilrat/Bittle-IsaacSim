@@ -8,6 +8,7 @@ from stable_baselines3 import TD3
 from stable_baselines3.common.vec_env import DummyVecEnv
 from GymWrapper import gym_env
 from tools import log as logger
+from tools import save_checkpoint, load_latest_checkpoint, format_joint_locks
 from stable_baselines3.common.logger import configure
 
 
@@ -71,14 +72,24 @@ class TD3Agent:
             self.model._logger = configure()  # Creates default stdout logger
             self.model._current_progress_remaining = 1.0  # or 0.5 if you want halfway-through LR
 
+    def save(self, step_increment=1, prefix="td3"):
+        self.step_count += step_increment
+        save_checkpoint(
+            model=self.model,
+            algo=prefix,
+            joint_lock_dict=self.gym_env.joint_lock_dict,
+            step_count=self.step_count,
+            save_dir=self.save_dir,
+            log_fn=self.log if self.log_enabled else print
+        )
+
     def _load_latest_checkpoint(self, prefix):
-        files = glob.glob(os.path.join(self.save_dir, f"{prefix}_step_*.pth"))
-        if not files:
-            return None
-        files.sort(key=lambda p: int(p.split("_step_")[-1].split(".")[0]), reverse=True)
-        path = files[0]
-        step = int(path.split("_step_")[-1].split(".")[0])
-        return {"path": path, "step": int(step)}
+        ckpt = load_latest_checkpoint(
+            algo=prefix,
+            joint_lock_dict=self.gym_env.joint_lock_dict,
+            save_dir=self.save_dir
+        )
+        return ckpt
 
     def predict_action(self, obs):
         action, _ = self.policy.predict(obs, deterministic=False)
@@ -127,8 +138,3 @@ class TD3Agent:
     def stop_training(self):
         self.should_stop = True
 
-    def save(self, step_increment=1, prefix="td3"):
-        self.step_count += step_increment
-        path = os.path.join(self.save_dir, f"{prefix}_step_{self.step_count}.pth")
-        self.model.save(path)
-        self.log(f"[TD3] Saved model to {path}", flush=self.log_enabled)
