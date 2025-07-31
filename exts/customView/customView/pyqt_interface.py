@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-        QMessageBox, QSlider, QApplication, QFrame, QCheckBox, QTabWidget, QSpinBox
+    QMessageBox, QSlider, QApplication, QFrame, QCheckBox, QTabWidget, QSpinBox
 )
 from PyQt5.QtOpenGL import QGLWidget
 from PyQt5.QtCore import Qt
@@ -15,7 +15,6 @@ import os
 import random
 
 
-# Define custom interactor style to allow only yaw rotation (side-to-side)
 class DragRotateInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
     def __init__(self):
         super().__init__()
@@ -37,23 +36,20 @@ class DragRotateInteractorStyle(vtk.vtkInteractorStyleTrackballCamera):
     def on_mouse_move(self, obj, event):
         if not self.left_button_down:
             return
-
         interactor = self.GetInteractor()
         x, y = interactor.GetEventPosition()
         if self.last_pos is None:
             self.last_pos = (x, y)
             return
-
         last_x, last_y = self.last_pos
         delta_x = x - last_x
         delta_y = y - last_y
         self.last_pos = (x, y)
-
         renderer = self.GetDefaultRenderer()
         if renderer:
             camera = renderer.GetActiveCamera()
-            camera.Azimuth(-delta_x * 0.3)       # ← yaw (unchanged)
-            camera.Elevation(-delta_y * 0.3)     # ← pitch (inverted)
+            camera.Azimuth(-delta_x * 0.3)
+            camera.Elevation(-delta_y * 0.3)
             renderer.ResetCameraClippingRange()
             interactor.Render()
 
@@ -69,23 +65,22 @@ class RLParamInputGUI(QWidget):
             ("Correct Posture Bonus", 0, 10, self.default_weights[0]),
             ("Smooth Bonus Weight", 0, 10, self.default_weights[1]),
             ("Incorrect Posture Penalty", 0, 10, self.default_weights[2]),
-            ("Jerking Movement Penalty (x10)", 0, 50, int(self.default_weights[3] * 10)),  # scaled
-            ("High Joint Velocity Penalty (x10)", 0, 50, int(self.default_weights[4] * 10)),  # scaled
+            ("Jerking Movement Penalty (x10)", 0, 50, int(self.default_weights[3] * 10)),
+            ("High Joint Velocity Penalty (x10)", 0, 50, int(self.default_weights[4] * 10)),
             ("Z Height Penalty", 0, 10, self.default_weights[5]),
             ("Distance to Goal Penalty", 0, 20, self.default_weights[6]),
             ("Goal Alignment Bonus", 0, 10, self.default_weights[7]),
         ]
 
-
         self.joint_labels = {
-            "left_back_shoulder_joint":   (20, 50, 270),
-            "left_back_knee_joint":   (13, 20, 235),
-            "left_front_shoulder_joint":   (-1, 55, 165),
-            "left_front_knee_joint":   (-5, 20, 130),
-            "right_back_shoulder_joint":   (130, 50, 250),
-            "right_back_knee_joint":   (130, 10, 235),
-            "right_front_shoulder_joint":   (110, 50, 150),
-            "right_front_knee_joint":   (110, 15, 115),
+            "left_back_shoulder_joint": (20, 50, 270),
+            "left_back_knee_joint": (13, 20, 235),
+            "left_front_shoulder_joint": (-1, 55, 165),
+            "left_front_knee_joint": (-5, 20, 130),
+            "right_back_shoulder_joint": (130, 50, 250),
+            "right_back_knee_joint": (130, 10, 235),
+            "right_front_shoulder_joint": (110, 50, 150),
+            "right_front_knee_joint": (110, 15, 115),
         }
 
         self.bittle_tabs = []
@@ -108,20 +103,21 @@ class RLParamInputGUI(QWidget):
         self.tabs = QTabWidget()
         self.control_layout.addWidget(self.tabs)
 
+        self.init_sliders()
         self.initButtons()
+
+        self.training_mode_checkbox.stateChanged.connect(self.toggle_demo_slider)
+
         main_layout.addLayout(self.control_layout)
 
-        self.init_vtk(main_layout)  # ← Add shared 3D viewer
-
+        self.init_vtk(main_layout)
         self.setLayout(main_layout)
         self.generateTabs()
 
         try:
             self.renderer_info = self.detect_renderer()
-        except Exception as e:
+        except Exception:
             self.renderer_info = f"Renderer: [Unavailable]"
-
-        # Add renderer label (green text)
         self.renderer_label = QLabel(self.renderer_info)
         self.renderer_label.setStyleSheet("color: green; font-size: 10pt;")
         self.control_layout.addWidget(self.renderer_label)
@@ -205,15 +201,44 @@ class RLParamInputGUI(QWidget):
         return f"Renderer: {dummy.vendor} - {dummy.renderer}"
 
 
+    def init_sliders(self):
+        self.demo_ckpt_label = QLabel("Checkpoint Step: 0")
+        self.demo_ckpt_slider = QSlider(Qt.Horizontal)
+        self.demo_ckpt_slider.setMinimum(0)
+        self.demo_ckpt_slider.setMaximum(10000)
+        self.demo_ckpt_slider.setTickInterval(1000)
+        self.demo_ckpt_slider.setSingleStep(1000)
+        self.demo_ckpt_slider.setPageStep(1000)
+        self.demo_ckpt_slider.setValue(0)
+        self.demo_ckpt_slider.setTickPosition(QSlider.TicksBelow)
+
+        self.demo_ckpt_slider.valueChanged.connect(self.snap_demo_ckpt)
+
+        self.control_layout.addWidget(self.demo_ckpt_label)
+        self.control_layout.addWidget(self.demo_ckpt_slider)
+
+    def snap_demo_ckpt(self, val):
+        snapped_val = round(val / 1000) * 1000
+        if snapped_val != val:
+            self.demo_ckpt_slider.blockSignals(True)
+            self.demo_ckpt_slider.setValue(snapped_val)
+            self.demo_ckpt_slider.blockSignals(False)
+        self.demo_ckpt_label.setText(f"Checkpoint Step: {snapped_val}")
+
+
+    def toggle_demo_slider(self):
+        is_demo = not self.training_mode_checkbox.isChecked()
+        self.demo_ckpt_label.setVisible(is_demo)
+        self.demo_ckpt_slider.setVisible(is_demo)
+
     def generateTabs(self):
         self.tabs.clear()
         self.bittle_tabs = []
 
         for i in range(self.agent_spinner.value()):
+            from PyQt5.QtWidgets import QComboBox
             joint_checkboxes = []
             sliders = []
-
-            from PyQt5.QtWidgets import QComboBox
             algo_combo = QComboBox()
             algo_combo.addItems(["ppo", "dp3d", "td3", "a2c"])
 
@@ -236,7 +261,7 @@ class RLParamInputGUI(QWidget):
                 label = QLabel(f"{label_text}: {default / 10.0:.1f}" if scaled else f"{label_text}: {default}")
                 slider.setMinimum(min_val)
                 slider.setMaximum(max_val)
-                slider.setValue(default * 10 if scaled else default)
+                slider.setValue(default)
                 slider.setTickInterval(1)
                 slider.setSingleStep(1)
                 slider.valueChanged.connect(
@@ -252,7 +277,6 @@ class RLParamInputGUI(QWidget):
             header = QLabel("Lock Joints")
             header.setStyleSheet("font-weight: bold; font-size: 12pt;")
             vbox.addWidget(header)
-            
             for joint in self.joint_labels.keys():
                 cb = QCheckBox(joint)
                 joint_checkboxes.append(cb)
@@ -262,19 +286,13 @@ class RLParamInputGUI(QWidget):
             self.tabs.addTab(tab, f"Bittle {i+1}")
             self.bittle_tabs.append((sliders, joint_checkboxes, algo_combo))
 
-
     def get_config(self):
-        all_weights = []
-        all_joint_states = []
-        algorithms = []
-
+        all_weights, all_joint_states, algorithms = [], [], []
         for sliders, joint_checkboxes, algo_combo in self.bittle_tabs:
             values = [s.value() for s in sliders]
-            weights = [val / 10.0 if "x10" in label else val
-                    for (label, *_), val in zip(self.param_defs, values)]
+            weights = [val / 10.0 if "x10" in label else val for (label, *_), val in zip(self.param_defs, values)]
             joints = {cb.text(): cb.isChecked() for cb in joint_checkboxes}
             algo = algo_combo.currentText()
-
             all_weights.append(weights)
             all_joint_states.append(joints)
             algorithms.append(algo)
@@ -285,18 +303,17 @@ class RLParamInputGUI(QWidget):
             "algorithms": algorithms,
             "num_agents": self.agent_spinner.value(),
             "headless": self.headless_checkbox.isChecked(),
-            "training_mode": self.training_mode_checkbox.isChecked()
+            "training_mode": self.training_mode_checkbox.isChecked(),
+            "demo_ckpt_step": self.demo_ckpt_slider.value()
         }
 
-
     def initButtons(self):
-
         self.training_mode_checkbox = QCheckBox("Training Mode (Separate Ground Planes)")
         self.training_mode_checkbox.setChecked(False)
         self.control_layout.addWidget(self.training_mode_checkbox)
 
         self.headless_checkbox = QCheckBox("Run in Headless Mode")
-        self.headless_checkbox.setChecked(False)  # Default: unchecked
+        self.headless_checkbox.setChecked(False)
         self.control_layout.addWidget(self.headless_checkbox)
 
         self.train_btn = QPushButton("Start Training")
@@ -314,28 +331,20 @@ class RLParamInputGUI(QWidget):
                 json.dump(config, f, indent=2)
 
             setup_script = f"{self.isaac_root}/python.sh"
-            
-            # Decide whether to run trainer or demo
-            if config.get("training_mode", False):
-                target_script = f"{self.isaac_root}/alpha/exts/customView/customView/trainer.py"
-            else:
-                target_script = f"{self.isaac_root}/alpha/exts/customView/customView/demo.py"
-
-            self.proc = subprocess.Popen(
-                [setup_script, target_script],
-                preexec_fn=os.setsid
+            script_path = (
+                f"{self.isaac_root}/alpha/exts/customView/customView/trainer.py"
+                if config.get("training_mode", False)
+                else f"{self.isaac_root}/alpha/exts/customView/customView/demo.py"
             )
-
-            self.train_btn.setEnabled(False)   # 🔒 Disable Start
-            self.stop_btn.setEnabled(True)     # 🔓 Enable Stop
+            self.proc = subprocess.Popen([setup_script, script_path], preexec_fn=os.setsid)
+            self.train_btn.setEnabled(False)
+            self.stop_btn.setEnabled(True)
 
         except Exception as e:
             QMessageBox.critical(self, "Execution Error", f"Unexpected error: {e}")
 
-
-
     def stopTrainer(self):
-        if self.proc and self.proc.poll() is None:
+        if hasattr(self, "proc") and self.proc and self.proc.poll() is None:
             try:
                 os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
                 self.proc.wait(timeout=5)
@@ -344,9 +353,8 @@ class RLParamInputGUI(QWidget):
                 QMessageBox.critical(self, "Stop Error", f"Failed to terminate Isaac Sim: {e}")
         else:
             QMessageBox.information(self, "No Active Process", "There is no running Isaac Sim process.")
-
-        self.train_btn.setEnabled(True)   # 🔓 Re-enable Start
-        self.stop_btn.setEnabled(False)   # 🔒 Disable Stop
+        self.train_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
 
 
 if __name__ == "__main__":
