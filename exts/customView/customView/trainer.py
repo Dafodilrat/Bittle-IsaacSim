@@ -20,7 +20,7 @@ class MultiAgentTrainer:
         self.steps_per_episode = 1000
         self.num_episodes = 10000
         self.save_file = os.path.join(os.environ.get("ISAACSIM_PATH"), "alpha", "checkpoints")
-        self.save_every_n_episodes = 100  # ← Save every 10 episodes
+        self.save_every_n_episodes = 1  # ← Save every 10 episodes
 
         # === Load configuration from JSON ===
         self.load_config()
@@ -155,10 +155,12 @@ class MultiAgentTrainer:
                 step_count += 1
                 global_step += 1
 
-        if (episode + 1) % self.save_every_n_episodes == 0:
+            # ✅ Save after every episode
             for i, agent in enumerate(self.agents):
-                agent.save(step_increment=self.steps_per_episode, prefix=self.agent_algorithms[i].lower())
+                algo = self.agent_algorithms[i].lower()
+                agent.save(step_increment=self.steps_per_episode, prefix=algo)
 
+            # ✅ Log episode summary
             for i, agent in enumerate(self.agents):
                 info = agent.gym_env.generate_info()
                 self.log(f"[Agent {i}] Episode {episode + 1} Summary:", True)
@@ -170,10 +172,14 @@ class MultiAgentTrainer:
             for agent in self.agents:
                 agent.reset()
 
-        self.log(f"[DEBUG] Saving final model for {algo} agent {i}", True)
-        agent.save(step_increment=0, prefix=algo)
+        # ✅ Final save after training completes
+        for i, agent in enumerate(self.agents):
+            algo = self.agent_algorithms[i].lower()
+            self.log(f"[DEBUG] Saving final model for {algo} agent {i}", True)
+            agent.save(step_increment=0, prefix=algo)
 
         self.log("[DEBUG] Final models saved.", True)
+
 
 
 if __name__ == "__main__":
