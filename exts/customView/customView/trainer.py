@@ -20,7 +20,7 @@ class MultiAgentTrainer:
         self.steps_per_episode = 1000
         self.num_episodes = 10000
         self.save_file = os.path.join(os.environ.get("ISAACSIM_PATH"), "alpha", "checkpoints")
-        self.save_every_n_episodes = 1  # ← Save every 10 episodes
+        self.save_every_n_episodes = 1000  # ← Save every 10 episodes
 
         # === Load configuration from JSON ===
         self.load_config()
