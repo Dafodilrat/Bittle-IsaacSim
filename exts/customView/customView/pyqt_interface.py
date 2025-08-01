@@ -86,6 +86,8 @@ class RLParamInputGUI(QWidget):
         self.bittle_tabs = []
         self.train_btn = None
         self.stop_btn = None
+        self.tab_memory = {}  # Memory for preserving tab state
+
         self.initUI()
 
     def initUI(self):
@@ -232,13 +234,20 @@ class RLParamInputGUI(QWidget):
         self.demo_ckpt_slider.setVisible(is_demo)
 
     def generateTabs(self):
+        # Save current tab states to memory
+        for idx, (sliders, checkboxes, algo_combo) in enumerate(self.bittle_tabs):
+            self.tab_memory[idx] = {
+                "slider_vals": [s.value() for s in sliders],
+                "checkbox_vals": [cb.isChecked() for cb in checkboxes],
+                "algo": algo_combo.currentText()
+            }
+
         self.tabs.clear()
         self.bittle_tabs = []
 
         for i in range(self.agent_spinner.value()):
             from PyQt5.QtWidgets import QComboBox
-            joint_checkboxes = []
-            sliders = []
+            sliders, checkboxes = [], []
             algo_combo = QComboBox()
             algo_combo.addItems(["ppo", "dp3d", "td3", "a2c"])
 
@@ -279,12 +288,22 @@ class RLParamInputGUI(QWidget):
             vbox.addWidget(header)
             for joint in self.joint_labels.keys():
                 cb = QCheckBox(joint)
-                joint_checkboxes.append(cb)
+                checkboxes.append(cb)
                 vbox.addWidget(cb)
 
             tab.setLayout(vbox)
             self.tabs.addTab(tab, f"Bittle {i+1}")
-            self.bittle_tabs.append((sliders, joint_checkboxes, algo_combo))
+            self.bittle_tabs.append((sliders, checkboxes, algo_combo))
+
+            # Restore from memory if available
+            if i in self.tab_memory:
+                state = self.tab_memory[i]
+                for s, val in zip(sliders, state["slider_vals"]):
+                    s.setValue(val)
+                for cb, val in zip(checkboxes, state["checkbox_vals"]):
+                    cb.setChecked(val)
+                algo_combo.setCurrentText(state["algo"])
+
 
     def get_config(self):
         all_weights, all_joint_states, algorithms = [], [], []
@@ -355,6 +374,10 @@ class RLParamInputGUI(QWidget):
             QMessageBox.information(self, "No Active Process", "There is no running Isaac Sim process.")
         self.train_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+
+    def closeEvent(self, event):
+        self.tab_memory.clear()
+        event.accept()
 
 
 if __name__ == "__main__":
