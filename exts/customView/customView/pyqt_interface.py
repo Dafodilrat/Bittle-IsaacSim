@@ -96,7 +96,7 @@ class RLParamInputGUI(QWidget):
 
         self.agent_spinner = QSpinBox()
         self.agent_spinner.setMinimum(1)
-        self.agent_spinner.setMaximum(10)
+        self.agent_spinner.setMaximum(40)
         self.agent_spinner.setValue(2)
         self.agent_spinner.valueChanged.connect(self.generateTabs)
         self.control_layout.addWidget(QLabel("Number of Bittles"))
