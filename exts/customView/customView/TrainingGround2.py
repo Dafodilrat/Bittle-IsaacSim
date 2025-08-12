@@ -35,21 +35,19 @@ class TrainingGround:
     sync = False
     _sync_seed = 42
 
-    def __init__(self, size=10.0, color=(0.0, 0.0, 0.0), type="plane", gap_factor=2.0):
+    def __init__(self, size=10.0, color=(0.0, 0.0, 0.0), type="plane"):
         if type not in ["plane", "rocky"]:
             raise ValueError(f"Invalid terrain type: {type}. Must be 'plane' or 'rocky'.")
         self.size = size
         self.color = color
         self.type = type
-        self.gap_factor = gap_factor
         self.z = TrainingGround.z_offset
-        TrainingGround.cell_size = self.size * self.gap_factor
+        TrainingGround.cell_size = self.size + 2.0
         self.stage = get_current_stage()
         self._point_cache = []
 
         self.prim_path, self.row, self.col, self.x_offset, self.y_offset = self._auto_reserve()
-
-        self.prim = self.create_ground_plane()
+        self.create_ground_plane()
         self.enable_collision()
         self.set_visuals()
         self.set_friction_coeffs()
@@ -72,10 +70,11 @@ class TrainingGround:
         return path, row, col, x, y
 
     def create_ground_plane(self):
+        # Define terrain configuration with flat and rocky terrains
         sub_terrains = {
             "plane": HfRandomUniformTerrainCfg(
                 proportion=1.0 if self.type == "plane" else 0.0,
-                noise_range=(0.0, 0.0),
+                noise_range=(0.0, 0.0),  # Flat terrain
                 noise_step=0.1,
                 horizontal_scale=0.1,
                 vertical_scale=0.005,
@@ -83,7 +82,7 @@ class TrainingGround:
             ),
             "rocky": HfRandomUniformTerrainCfg(
                 proportion=1.0 if self.type == "rocky" else 0.0,
-                noise_range=(0.05, 0.20),
+                noise_range=(0.05, 0.20),  # Rough terrain
                 noise_step=0.05,
                 horizontal_scale=0.05,
                 vertical_scale=0.01,
@@ -96,7 +95,7 @@ class TrainingGround:
             num_cols=1,
             size=(self.size, self.size),
             vertical_scale=0.005,
-            color_scheme="none",
+            color_scheme="none",  # Color set via visual material
             sub_terrains=sub_terrains,
             curriculum=False,
             border_width=0.0,
@@ -113,9 +112,13 @@ class TrainingGround:
             # physics_material=sim_utils.RigidBodyMaterialCfg()
         )
 
+        # Create terrain
         importer = TerrainImporter(imp_cfg)
 
-        prim = get_prim_at_path(self.prim_path)
+        # Get the prim and apply translation
+
+        print(self.prim_path,flush=True)
+        prim = get_prim_at_path(self.prim_path+"/terrain")
         if not prim.IsValid():
             raise RuntimeError(f"Failed to create terrain at {self.prim_path}")
 
@@ -123,11 +126,8 @@ class TrainingGround:
         xform.ClearXformOpOrder()
         translate_op = xform.AddTranslateOp()
         translate_op.Set(Gf.Vec3f(self.x_offset, self.y_offset, self.z))
-        logger.debug(f"Applied translation ({self.x_offset}, {self.y_offset}, {self.z}) to {self.prim_path}")
 
-        omni.usd.get_context().get_stage().GetRootLayer().Save()
         self.importer = importer
-        return prim
 
     def enable_collision(self):
         mesh_path = f"{self.prim_path}/mesh"
@@ -167,9 +167,9 @@ class TrainingGround:
         TrainingGround.all_bounds.append(self.bounds)
 
     def get_world_translation(self):
-        prim = get_prim_at_path(self.prim_path)
+        prim = get_prim_at_path(self.prim_path+"/terrain")
         if not prim.IsValid():
-            logger.error(f"Invalid prim at: {self.prim_path}")
+            logger.error(f"Invalid prim at: {self.prim_path}/terrain")
             return Gf.Vec3d(0, 0, 0)
 
         xform = UsdGeom.Xformable(prim)
@@ -256,19 +256,18 @@ def main():
             type=terrain_type
         )
         grounds.append(ground)
-        world.reset()
         logger.info(f"Created {terrain_type} terrain at {ground.prim_path}")
 
-    # logger.info(f"Terrain grid spawned successfully with {len(grounds)} terrains")
+    logger.info(f"Terrain grid spawned successfully with {len(grounds)} terrains")
 
-    # # Test point generation
-    # logger.info("Testing point generation for each training ground...")
-    # for ground in grounds:
-    #     logger.info(f"Generating points for {ground.prim_path}")
-    #     ground.generate_points(n=5, spacing=2.0, margin=1.0)
-    #     while ground._point_cache:
-    #         point = ground.get_point()
-    #         logger.info(f"Point in {ground.prim_path}: {point}")
+    # Test point generation
+    logger.info("Testing point generation for each training ground...")
+    for ground in grounds:
+        logger.info(f"Generating points for {ground.prim_path}")
+        ground.generate_points(n=5, spacing=2.0, margin=1.0)
+        while ground._point_cache:
+            point = ground.get_point()
+            logger.info(f"Point in {ground.prim_path}: {point}")
 
     logger.info("Entering simulation update loop...")
     while app.is_running():
@@ -276,9 +275,5 @@ def main():
         app.update()
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        logger.error(f"Error in main: {e}")
-    finally:
-        app.close()
+
+    main()
