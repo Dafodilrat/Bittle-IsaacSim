@@ -1,4 +1,5 @@
 import os
+from sys import path
 import time
 import torch as th
 import omni.kit.app
@@ -100,43 +101,64 @@ def format_joint_locks(joint_lock_dict):
     return "_".join(sorted(locked)) if locked else "all_free"
 
 
-def get_checkpoint_filename(algo, joint_lock_dict, step=None):
-    """
-    Generates a checkpoint filename.
-    Example:
-      - With locked joints: ppo_joint1_joint2_step_1000.pth
-      - No joints locked:   ppo_step_1000.pth
-    """
-    suffix = format_joint_locks(joint_lock_dict)
-    if suffix == "all_free":
-        return f"{algo}_step_{step}.pth" if step is not None else f"{algo}.pth"
-    return f"{algo}_{suffix}_step_{step}.pth" if step is not None else f"{algo}_{suffix}.pth"
-
-
 def save_checkpoint(model, algo, joint_lock_dict, step_count, save_dir, log_fn=print):
     """
-    Saves the model to a uniquely named file.
+    Saves the model using the format:
+      - ppo_step_1000.zip              (all joints free)
+      - ppo_joint1_joint2_step_1000.zip (some joints locked)
     """
     os.makedirs(save_dir, exist_ok=True)
-    filename = get_checkpoint_filename(algo, joint_lock_dict, step=step_count)
+
+    suffix = format_joint_locks(joint_lock_dict)
+
+    if suffix == "all_free":
+        filename = f"{algo}_step_{step_count}.zip"
+    else:
+        filename = f"{algo}_{suffix}_step_{step_count}.zip"
+
     path = os.path.join(save_dir, filename)
     model.save(path)
     log_fn(f"[{algo.upper()}] Saved model to {path}", flush=True)
     return path
 
-
-def load_latest_checkpoint(algo, joint_lock_dict, save_dir):
+def load_checkpoint(algo, joint_lock_dict, save_dir, step=None, log_fn=print):
     """
-    Finds the latest checkpoint for a given algo and joint lock combo.
+    Finds and returns the checkpoint path and step for the given algorithm and joint lock config.
+
+    - If step is provided (int >= 0), attempts to load that exact checkpoint.
+    - If step is None or -1, loads the latest available checkpoint.
+    Returns:
+        dict with keys: {"path": <path_to_checkpoint>, "step": <step_number>}
+        or None if no checkpoint found.
     """
     suffix = format_joint_locks(joint_lock_dict)
-    pattern = os.path.join(save_dir, f"{algo}_{suffix}_step_*.pth")
-    files = glob.glob(pattern)
-    if not files:
-        return None
-    files.sort(key=lambda p: int(p.split("_step_")[-1].split(".")[0]), reverse=True)
-    return {
-        "path": files[0],
-        "step": int(files[0].split("_step_")[-1].split(".")[0])
-    }
+    if step == -1:
+        step = None
+
+    if step is not None:
+        filename = (
+            f"{algo}_step_{step}.zip" if suffix == "all_free"
+            else f"{algo}_{suffix}_step_{step}.zip"
+        )
+        path = os.path.join(save_dir, filename)
+        if os.path.exists(path):
+            return {"path": path, "step": step}
+        else:
+            log_fn(f"[{algo.upper()}] Checkpoint not found: {path}", flush=True)
+            return None
+    else:
+        pattern = (
+            os.path.join(save_dir, f"{algo}_step_*.zip") if suffix == "all_free"
+            else os.path.join(save_dir, f"{algo}_{suffix}_step_*.zip")
+        )
+        files = [f for f in glob.glob(pattern) if "step_" in f]
+        if not files:
+            log_fn(f"[{algo.upper()}] No checkpoints found matching: {pattern}", flush=True)
+            return None
+
+        files.sort(key=lambda p: int(p.split("step_")[-1].split(".")[0]), reverse=True)
+        latest_path = files[0]
+        latest_step = int(latest_path.split("step_")[-1].split(".")[0])
+        return {"path": latest_path, "step": latest_step}
+
 
