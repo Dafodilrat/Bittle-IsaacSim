@@ -8,7 +8,8 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv
 from GymWrapper import gym_env
 from tools import log as logger
-from tools import save_checkpoint, load_latest_checkpoint, format_joint_locks
+from tools import save_checkpoint, load_checkpoint, format_joint_locks
+from stable_baselines3.common.callbacks import CheckpointCallback
 
 # Ensure stable-baselines3 is loaded from Isaac Sim path if needed
 sb3_path = os.environ.get("ISAACSIM_PATH") + "/kit/python/lib/python3.10/site-packages"
@@ -17,7 +18,7 @@ if sb3_path not in sys.path:
     print("Manually added stable-baselines3 path to sys.path")
 
 class PPOAgent:
-    def __init__(self, bittle, weights, sim_env, joint_states, grnd, device="cpu", log=False):
+    def __init__(self, bittle, weights, sim_env, joint_states, grnd, device="cpu", log=True):
         # Initialize PPO agent with Gym environment and checkpoint management
         self.should_stop = False
         self.device = "cpu"
@@ -38,8 +39,7 @@ class PPOAgent:
         if "cuda" in self.device:
             device_idx = int(self.device.split(":")[-1])
             th.cuda.set_device(device_idx)
-
-        # Setup PPO model from Stable Baselines3
+        
         self.model = PPO(
             policy="MlpPolicy",
             env=DummyVecEnv([lambda: self.gym_env]),
@@ -47,17 +47,24 @@ class PPOAgent:
             device="cpu",
         )
 
-        # Load latest saved checkpoint if available
-        latest_ckpt = self._load_latest_checkpoint("ppo")
-        if latest_ckpt:
-            self.model.set_parameters(latest_ckpt["path"])
-            self.step_count = latest_ckpt["step"]
-            self.log(f"[PPO] Loaded checkpoint from {latest_ckpt['path']} at step {self.step_count}", flush=self.log_enabled)
-
         self.policy = self.model.policy
         self.buffer = self.model.rollout_buffer
         self.obs, _ = self.gym_env.reset()
         self.dones = [False]
+
+    def load_model(self, step=-1):
+
+        ckpt = load_checkpoint("ppo", self.gym_env.joint_lock_dict, self.save_dir, step=step)
+        
+        if ckpt:
+            self.model=PPO.load(ckpt["path"],env=DummyVecEnv([lambda: self.gym_env]))
+            self.step_count = ckpt["step"]
+            self.log(f"[PPO] Loaded checkpoint from {ckpt['path']} at step {self.step_count}", flush=self.log_enabled)
+            self.policy = self.model.policy
+            self.buffer = self.model.rollout_buffer
+        else :
+            self.log(f"[PPO] No chekpoint to load", flush=self.log_enabled)
+
 
     def save(self, step_increment=1, prefix="ppo"):
         self.step_count += step_increment
@@ -69,14 +76,6 @@ class PPOAgent:
             save_dir=self.save_dir,
             log_fn=self.log if self.log_enabled else print
         )
-
-    def _load_latest_checkpoint(self, prefix):
-        ckpt = load_latest_checkpoint(
-            algo=prefix,
-            joint_lock_dict=self.gym_env.joint_lock_dict,
-            save_dir=self.save_dir
-        )
-        return ckpt
 
     def predict_action(self, obs):
         # Use current policy to predict the next action

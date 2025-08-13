@@ -9,7 +9,7 @@ from stable_baselines3 import A2C
 from stable_baselines3.common.vec_env import DummyVecEnv
 from GymWrapper import gym_env
 from tools import log as logger
-from tools import save_checkpoint, load_latest_checkpoint, format_joint_locks
+from tools import save_checkpoint, load_checkpoint, format_joint_locks
 
 
 sb3_path = os.environ.get("ISAACSIM_PATH") + "/kit/python/lib/python3.10/site-packages"
@@ -38,7 +38,7 @@ class A2CAgent:
         if "cuda" in self.device:
             device_idx = int(self.device.split(":")[-1])
             th.cuda.set_device(device_idx)
-
+        
         self.model = A2C(
             policy="MlpPolicy",
             env=DummyVecEnv([lambda: self.gym_env]),
@@ -46,17 +46,23 @@ class A2CAgent:
             device="cpu"
         )
 
-        latest_ckpt = self._load_latest_checkpoint("a2c")
-        if latest_ckpt:
-            self.model.set_parameters(latest_ckpt["path"])
-            self.step_count = latest_ckpt["step"]
-            self.log(f"[A2C] Loaded checkpoint from {latest_ckpt['path']} at step {self.step_count}", flush=self.log_enabled)
-
         self.policy = self.model.policy
         self.buffer = self.model.rollout_buffer
         self.obs, _ = self.gym_env.reset()
         self.dones = [False]
     
+    def load_model(self, step=-1):
+        ckpt = load_checkpoint("a2c", self.gym_env.joint_lock_dict, self.save_dir, step=step)
+        if ckpt:
+            self.model=A2C.load(ckpt["path"],env=DummyVecEnv([lambda: self.gym_env]))
+            self.step_count = ckpt["step"]
+            self.log(f"[A2C] Loaded checkpoint from {ckpt['path']} at step {self.step_count}", flush=self.log_enabled)
+            self.policy = self.model.policy
+            self.buffer = self.model.rollout_buffer
+        else:
+            self.log(f"[A2C] No chekpoint to load", flush=self.log_enabled)
+
+            
     def save(self, step_increment=1, prefix="a2c"):
         self.step_count += step_increment
         save_checkpoint(
@@ -67,14 +73,6 @@ class A2CAgent:
             save_dir=self.save_dir,
             log_fn=self.log if self.log_enabled else print
         )
-
-    def _load_latest_checkpoint(self, prefix):
-        ckpt = load_latest_checkpoint(
-            algo=prefix,
-            joint_lock_dict=self.gym_env.joint_lock_dict,
-            save_dir=self.save_dir
-        )
-        return ckpt
 
     def predict_action(self, obs):
         action, _ = self.policy.predict(obs, deterministic=False)

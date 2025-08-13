@@ -8,7 +8,7 @@ from stable_baselines3 import TD3
 from stable_baselines3.common.vec_env import DummyVecEnv
 from GymWrapper import gym_env
 from tools import log as logger
-from tools import save_checkpoint, load_latest_checkpoint, format_joint_locks
+from tools import save_checkpoint, load_checkpoint, format_joint_locks
 from stable_baselines3.common.logger import configure
 
 
@@ -49,19 +49,13 @@ class TD3Agent:
         if "cuda" in self.device:
             device_idx = int(self.device.split(":")[-1])
             th.cuda.set_device(device_idx)
-
+        
         self.model = TD3(
             policy="MlpPolicy",
             env=DummyVecEnv([lambda: self.gym_env]),
             verbose=0,
             device=self.device
         )
-
-        latest_ckpt = self._load_latest_checkpoint("td3")
-        if latest_ckpt:
-            self.model.set_parameters(latest_ckpt["path"])
-            self.step_count = latest_ckpt["step"]
-            self.log(f"[TD3] Loaded checkpoint from {latest_ckpt['path']} at step {self.step_count}", flush=self.log_enabled)
 
         self.policy = self.model.policy
         self.buffer = self.model.replay_buffer
@@ -71,6 +65,23 @@ class TD3Agent:
         if not hasattr(self.model, "_logger"):
             self.model._logger = configure()  # Creates default stdout logger
             self.model._current_progress_remaining = 1.0  # or 0.5 if you want halfway-through LR
+
+    def load_model(self, step=-1):
+
+        ckpt = load_checkpoint("td3", self.gym_env.joint_lock_dict, self.save_dir, step=step)
+        if ckpt:
+            self.model=TD3.load(ckpt["path"],env=DummyVecEnv([lambda: self.gym_env]))
+            self.step_count = ckpt["step"]
+            self.log(f"[TD3] Loaded checkpoint from {ckpt['path']} at step {self.step_count}", flush=self.log_enabled)
+            self.policy = self.model.policy
+            self.buffer = self.model.replay_buffer
+            self.policy = self.model.policy
+            self.buffer = self.model.replay_buffer
+            if not hasattr(self.model, "_logger"):
+                self.model._logger = configure()  # Creates default stdout logger
+                self.model._current_progress_remaining = 1.0  # or 0.5 if you want halfway-through LR
+        else :
+            self.log(f"[TD3] No chekpoint to load", flush=self.log_enabled)
 
     def save(self, step_increment=1, prefix="td3"):
         self.step_count += step_increment
@@ -82,14 +93,6 @@ class TD3Agent:
             save_dir=self.save_dir,
             log_fn=self.log if self.log_enabled else print
         )
-
-    def _load_latest_checkpoint(self, prefix):
-        ckpt = load_latest_checkpoint(
-            algo=prefix,
-            joint_lock_dict=self.gym_env.joint_lock_dict,
-            save_dir=self.save_dir
-        )
-        return ckpt
 
     def predict_action(self, obs):
         action, _ = self.policy.predict(obs, deterministic=False)
