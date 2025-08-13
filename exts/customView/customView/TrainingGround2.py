@@ -4,13 +4,13 @@ import random
 import logging
 from omni.isaac.kit import SimulationApp
 
-# Initialize SimulationApp
-app = SimulationApp({
-    "headless": False,
-    "hide_ui": False,
-    "window_width": 1280,
-    "window_height": 720,
-})
+# # Initialize SimulationApp
+# app = SimulationApp({
+#     "headless": False,
+#     "hide_ui": False,
+#     "window_width": 1280,
+#     "window_height": 720,
+# })
 
 from isaacsim.core.api import World
 from pxr import UsdGeom, Gf
@@ -35,12 +35,15 @@ class TrainingGround:
     sync = False
     _sync_seed = 42
 
-    def __init__(self, size=10.0, color=(0.0, 0.0, 0.0), type="plane"):
+    def __init__(self, size=10.0, color=(0.0, 0.0, 0.0), type="plane", static_friction=None, dynamic_friction=None):
         if type not in ["plane", "rocky"]:
             raise ValueError(f"Invalid terrain type: {type}. Must be 'plane' or 'rocky'.")
         self.size = size
         self.color = color
         self.type = type
+        # Set default friction values based on terrain type
+        self.static_friction = 0.6 if type == "plane" else 0.8 if static_friction is None else static_friction
+        self.dynamic_friction = 0.4 if type == "plane" else 0.5 if dynamic_friction is None else dynamic_friction
         self.z = TrainingGround.z_offset
         TrainingGround.cell_size = self.size + 2.0
         self.stage = get_current_stage()
@@ -51,7 +54,6 @@ class TrainingGround:
         self.enable_collision()
         self.set_visuals()
         self.set_friction_coeffs()
-        self.register_bounds()
 
     @staticmethod
     def set_sync(enabled=True, seed=42):
@@ -70,11 +72,10 @@ class TrainingGround:
         return path, row, col, x, y
 
     def create_ground_plane(self):
-        # Define terrain configuration with flat and rocky terrains
         sub_terrains = {
             "plane": HfRandomUniformTerrainCfg(
                 proportion=1.0 if self.type == "plane" else 0.0,
-                noise_range=(0.0, 0.0),  # Flat terrain
+                noise_range=(0.0, 0.0),
                 noise_step=0.1,
                 horizontal_scale=0.1,
                 vertical_scale=0.005,
@@ -82,7 +83,7 @@ class TrainingGround:
             ),
             "rocky": HfRandomUniformTerrainCfg(
                 proportion=1.0 if self.type == "rocky" else 0.0,
-                noise_range=(0.05, 0.20),  # Rough terrain
+                noise_range=(0.05, 0.20),
                 noise_step=0.05,
                 horizontal_scale=0.05,
                 vertical_scale=0.01,
@@ -95,7 +96,7 @@ class TrainingGround:
             num_cols=1,
             size=(self.size, self.size),
             vertical_scale=0.005,
-            color_scheme="none",  # Color set via visual material
+            color_scheme="none",
             sub_terrains=sub_terrains,
             curriculum=False,
             border_width=0.0,
@@ -108,29 +109,29 @@ class TrainingGround:
             terrain_type="generator",
             terrain_generator=gen_cfg,
             debug_vis=False,
-            # visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=self.color),
-            # physics_material=sim_utils.RigidBodyMaterialCfg()
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=self.color),
+            physics_material=sim_utils.RigidBodyMaterialCfg(
+                static_friction=self.static_friction,
+                dynamic_friction=self.dynamic_friction
+            )
         )
 
-        # Create terrain
         importer = TerrainImporter(imp_cfg)
 
-        # Get the prim and apply translation
-
-        print(self.prim_path,flush=True)
-        prim = get_prim_at_path(self.prim_path+"/terrain")
+        prim = get_prim_at_path(self.prim_path + "/terrain")
         if not prim.IsValid():
-            raise RuntimeError(f"Failed to create terrain at {self.prim_path}")
+            raise RuntimeError(f"Failed to create terrain at {self.prim_path}/terrain")
 
         xform = UsdGeom.Xformable(prim)
         xform.ClearXformOpOrder()
         translate_op = xform.AddTranslateOp()
         translate_op.Set(Gf.Vec3f(self.x_offset, self.y_offset, self.z))
+        logger.debug(f"Applied translation ({self.x_offset}, {self.y_offset}, {self.z}) to {self.prim_path}/terrain")
 
         self.importer = importer
 
     def enable_collision(self):
-        mesh_path = f"{self.prim_path}/mesh"
+        mesh_path = f"{self.prim_path}"
         mesh_prim = get_prim_at_path(mesh_path)
         if not mesh_prim.IsValid():
             logger.error(f"Ground mesh not found at {mesh_path}")
@@ -143,7 +144,7 @@ class TrainingGround:
     def set_visuals(self):
         logger.debug(f"Visuals set for {self.prim_path} with color {self.color}")
 
-    def set_friction_coeffs(self, static_friction=0.6, dynamic_friction=0.4):
+    def set_friction_coeffs(self):
         material_path = f"{self.prim_path}/physicsMaterial"
         material_prim = get_prim_at_path(material_path)
         if not material_prim.IsValid():
@@ -151,12 +152,12 @@ class TrainingGround:
             return
 
         physics_mat = sim_utils.RigidBodyMaterialCfg(
-            static_friction=static_friction,
-            dynamic_friction=dynamic_friction
+            static_friction=self.static_friction,
+            dynamic_friction=self.dynamic_friction
         )
-        sim_utils.bind_physics_material(get_prim_at_path(f"{self.prim_path}/mesh"), material_path)
+        sim_utils.bind_physics_material(get_prim_at_path(f"{self.prim_path}/terrain"), material_path)
         physics_mat.func(material_path, physics_mat)
-        logger.info(f"Friction set on {material_path} for {self.prim_path}")
+        logger.info(f"Friction set on {material_path} for {self.prim_path}: static={self.static_friction}, dynamic={self.dynamic_friction}")
 
     def register_bounds(self):
         half = self.size / 2.0
@@ -167,7 +168,7 @@ class TrainingGround:
         TrainingGround.all_bounds.append(self.bounds)
 
     def get_world_translation(self):
-        prim = get_prim_at_path(self.prim_path+"/terrain")
+        prim = get_prim_at_path(self.prim_path + "/terrain")
         if not prim.IsValid():
             logger.error(f"Invalid prim at: {self.prim_path}/terrain")
             return Gf.Vec3d(0, 0, 0)
