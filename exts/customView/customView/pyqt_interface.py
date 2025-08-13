@@ -87,6 +87,8 @@ class RLParamInputGUI(QWidget):
         self.train_btn = None
         self.stop_btn = None
         self.tab_memory = {}  # Memory for preserving tab state
+        self.demo_ckpt_slider = None
+        self.demo_ckpt_label = None
 
         self.initUI()
 
@@ -201,23 +203,58 @@ class RLParamInputGUI(QWidget):
         dummy.activateWindow()
         QApplication.processEvents()
         return f"Renderer: {dummy.vendor} - {dummy.renderer}"
+    
+    def toggle_demo_slider(self):
+        is_latest = self.load_latest_checkbox.isChecked()
+
+        if is_latest:
+            if self.demo_ckpt_slider:
+                self.control_layout.removeWidget(self.demo_ckpt_slider)
+                self.demo_ckpt_slider.setParent(None)
+                self.demo_ckpt_slider.deleteLater()
+                self.demo_ckpt_slider = None
+
+            if self.demo_ckpt_label:
+                self.control_layout.removeWidget(self.demo_ckpt_label)
+                self.demo_ckpt_label.setParent(None)
+                self.demo_ckpt_label.deleteLater()
+                self.demo_ckpt_label = None
+        else:
+            if not self.demo_ckpt_slider:
+                self.demo_ckpt_label = QLabel("Checkpoint Step: 0")
+                self.demo_ckpt_slider = QSlider(Qt.Horizontal)
+                self.demo_ckpt_slider.setMinimum(0)
+                self.demo_ckpt_slider.setMaximum(10000)
+                self.demo_ckpt_slider.setTickInterval(1000)
+                self.demo_ckpt_slider.setSingleStep(1000)
+                self.demo_ckpt_slider.setPageStep(1000)
+                self.demo_ckpt_slider.setValue(0)
+                self.demo_ckpt_slider.setTickPosition(QSlider.TicksBelow)
+                self.demo_ckpt_slider.valueChanged.connect(self.snap_demo_ckpt)
+
+                self.control_layout.addWidget(self.demo_ckpt_label)
+                self.control_layout.addWidget(self.demo_ckpt_slider)
+
 
 
     def init_sliders(self):
-        self.demo_ckpt_label = QLabel("Checkpoint Step: 0")
-        self.demo_ckpt_slider = QSlider(Qt.Horizontal)
-        self.demo_ckpt_slider.setMinimum(0)
-        self.demo_ckpt_slider.setMaximum(10000)
-        self.demo_ckpt_slider.setTickInterval(1000)
-        self.demo_ckpt_slider.setSingleStep(1000)
-        self.demo_ckpt_slider.setPageStep(1000)
-        self.demo_ckpt_slider.setValue(0)
-        self.demo_ckpt_slider.setTickPosition(QSlider.TicksBelow)
+        # === Add Training Mode Checkbox ===
+        self.training_mode_checkbox = QCheckBox("Training Mode (Separate Ground Planes)")
+        self.training_mode_checkbox.setChecked(False)
+        self.control_layout.addWidget(self.training_mode_checkbox)
 
-        self.demo_ckpt_slider.valueChanged.connect(self.snap_demo_ckpt)
+        # === Add Load Latest Checkbox ===
+        self.load_latest_checkbox = QCheckBox("Load Latest Checkpoint")
+        self.load_latest_checkbox.setChecked(True)
+        self.load_latest_checkbox.stateChanged.connect(self.toggle_demo_slider)
+        self.control_layout.addWidget(self.load_latest_checkbox)
 
-        self.control_layout.addWidget(self.demo_ckpt_label)
-        self.control_layout.addWidget(self.demo_ckpt_slider)
+        # === Defer creation of slider and label to toggle_demo_slider
+        self.demo_ckpt_label = None
+        self.demo_ckpt_slider = None
+
+        # === Initialize UI state
+        self.toggle_demo_slider()
 
     def snap_demo_ckpt(self, val):
         snapped_val = round(val / 1000) * 1000
@@ -226,12 +263,6 @@ class RLParamInputGUI(QWidget):
             self.demo_ckpt_slider.setValue(snapped_val)
             self.demo_ckpt_slider.blockSignals(False)
         self.demo_ckpt_label.setText(f"Checkpoint Step: {snapped_val}")
-
-
-    def toggle_demo_slider(self):
-        is_demo = not self.training_mode_checkbox.isChecked()
-        self.demo_ckpt_label.setVisible(is_demo)
-        self.demo_ckpt_slider.setVisible(is_demo)
 
     def generateTabs(self):
         # Save current tab states to memory
@@ -323,13 +354,12 @@ class RLParamInputGUI(QWidget):
             "num_agents": self.agent_spinner.value(),
             "headless": self.headless_checkbox.isChecked(),
             "training_mode": self.training_mode_checkbox.isChecked(),
-            "demo_ckpt_step": self.demo_ckpt_slider.value()
+            "demo_ckpt_step": self.demo_ckpt_slider.value() if self.demo_ckpt_slider else -1
         }
 
     def initButtons(self):
-        self.training_mode_checkbox = QCheckBox("Training Mode (Separate Ground Planes)")
-        self.training_mode_checkbox.setChecked(False)
-        self.control_layout.addWidget(self.training_mode_checkbox)
+        # Remove this line:
+        # self.training_mode_checkbox = QCheckBox("Training Mode (Separate Ground Planes)")
 
         self.headless_checkbox = QCheckBox("Run in Headless Mode")
         self.headless_checkbox.setChecked(False)
@@ -342,6 +372,7 @@ class RLParamInputGUI(QWidget):
         self.stop_btn = QPushButton("Stop Training")
         self.stop_btn.clicked.connect(self.stopTrainer)
         self.control_layout.addWidget(self.stop_btn)
+
 
     def startTrainer(self):
         try:
