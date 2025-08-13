@@ -22,7 +22,7 @@ class MultiAgentTrainer:
         self.save_file = os.path.join(os.environ.get("ISAACSIM_PATH"), "alpha", "checkpoints")
         self.save_every_n_episodes = 1000  # ← Save every 10 episodes
 
-        # === Load configuration from JSON ===
+        # === Load configuration from JSON ===checkpoint
         self.load_config()
 
         # === Launch SimulationApp ===
@@ -30,7 +30,7 @@ class MultiAgentTrainer:
         SimulationApp({
             "headless": self.headless,
             "renderer": renderer_mode,
-            "hide_ui": True,
+            "hide_ui": False,
             "window_width": 1280,
             "window_height": 720,
         })
