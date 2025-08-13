@@ -117,6 +117,7 @@ class MultiAgentTrainer:
                 device=self.get_free_gpu(),
                 log=False
             )
+            agent.load_model()
             obs, _ = agent.gym_env.reset()
             self.agents.append(agent)
 
@@ -183,9 +184,9 @@ class MultiAgentTrainer:
 
 
 if __name__ == "__main__":
-    try:
-        trainer = MultiAgentTrainer()
-        trainer.setup_environment_and_agents()
-        trainer.train()
-    except Exception as e:
-        traceback.print_exc()
+    # try:
+    trainer = MultiAgentTrainer()
+    trainer.setup_environment_and_agents()
+    trainer.train()
+    # except Exception as e:
+    #     traceback.print_exc()
