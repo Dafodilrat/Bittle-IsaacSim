@@ -5,9 +5,8 @@ import os
 import json
 import time
 import traceback
-import glob
-import omni.kit.app
 import torch as th
+import omni.kit.app
 
 class MultiAgentDemo:
     """
@@ -27,7 +26,7 @@ class MultiAgentDemo:
         SimulationApp({
             "headless": self.headless,
             "renderer": renderer_mode,
-            "hide_ui": True,
+            "hide_ui": False,
             "window_width": 1280,
             "window_height": 720,
         })
@@ -65,6 +64,7 @@ class MultiAgentDemo:
         self.agent_algorithms = config["algorithms"]
         self.num_agents = config["num_agents"]
         self.headless = config.get("headless", False)
+        self.demo_ckpt_step = config.get("demo_ckpt_step", -1)
 
         print("[DEMO] Loaded configuration:")
         print(json.dumps(config, indent=2), flush=True)
@@ -79,7 +79,7 @@ class MultiAgentDemo:
         TrainingGround.set_sync(True, seed=42)
 
         self.sim_env = Environment()
-        self.sim_env.add_training_grounds(n=self.num_agents, size=12.0)
+        self.sim_env.add_training_grounds(n=self.num_agents, size=20.0)
         self.sim_env.add_bittles(n=self.num_agents, flush=True)
 
         self.agents.clear()
@@ -106,14 +106,7 @@ class MultiAgentDemo:
                 log=False
             )
 
-            # Load checkpoint
-            ckpt = agent._load_latest_checkpoint(prefix=algo)
-            if ckpt:
-                agent.model.set_parameters(ckpt["path"])
-                self.log(f"[DEMO] Loaded checkpoint: {ckpt['path']} (step {ckpt['step']})", True)
-            else:
-                self.log(f"[DEMO] No checkpoint found for agent {i} ({algo})", True)
-
+            agent.load_model(step=self.demo_ckpt_step)
             agent.reset()
             self.agents.append(agent)
 
@@ -133,10 +126,10 @@ class MultiAgentDemo:
 
             while True:
                 app.update()
-                for i, agent in enumerate(self.agents):
 
+                for i, agent in enumerate(self.agents):
                     if agent.gym_env.is_terminated():
-                        self.log(f"[DEMO] Agent {i} terminated. Respawning...", True)
+                        self.log(f"[DEMO] Agent {i} terminated (goal/fall/collision). Resetting...", True)
                         agent.reset()
                         continue
 
