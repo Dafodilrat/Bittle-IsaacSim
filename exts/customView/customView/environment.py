@@ -2,13 +2,13 @@ import time
 import numpy as np
 import omni.usd
 from isaacsim.core.api import World, PhysicsContext
-from pxr import UsdGeom, UsdPhysics, PhysxSchema, UsdShade, UsdLux, Gf
+from pxr import UsdGeom, UsdPhysics, PhysxSchema, UsdShade, UsdLux, Gf,Sdf
 from isaacsim.core.utils.stage import get_current_stage, is_stage_loading
 from isaacsim.core.utils.prims import is_prim_path_valid, get_prim_at_path
 from omni.isaac.core.simulation_context import SimulationContext
 
 from Bittle import Bittle
-from TrainingGround import TrainingGround
+from TrainingGround import TrainingGround   
 from tools import wait_for_prim, wait_for_stage_ready, wait_for_physics
 
 class Environment:
@@ -42,7 +42,7 @@ class Environment:
         self.setup_stage_and_physics()
 
         self.world = World(stage_units_in_meters=1.0, physics_prim_path=self.physics, set_defaults=True, device="cuda")
-        PhysicsContext(prim_path=self.physics)
+        # PhysicsContext(prim_path=self.physics)
         self.world.reset()
         self.world.play()
 
@@ -60,7 +60,9 @@ class Environment:
         print("[ENV] Setting up stage and physics for Kit extension...")
         self.clear_stage()
         wait_for_stage_ready()
-        self.context = SimulationContext(physics_prim_path=self.physics)
+        scene = UsdPhysics.Scene.Define(self.stage, Sdf.Path(self.physics))
+        scene.CreateGravityDirectionAttr().Set(Gf.Vec3f(0.0, 0.0, -1.0))
+        scene.CreateGravityMagnitudeAttr().Set(9.81)
         wait_for_physics(prim_path=self.physics)
         print("[ENV] Environment initialization complete!")
 
