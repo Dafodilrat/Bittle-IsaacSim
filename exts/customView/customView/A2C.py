@@ -43,7 +43,8 @@ class A2CAgent:
             policy="MlpPolicy",
             env=DummyVecEnv([lambda: self.gym_env]),
             verbose=0,
-            device="cpu"
+            device="cpu",
+            tensorboard_log=os.path.join(os.environ.get("ISAACSIM_PATH"),"alpha","logs")
         )
 
         self.policy = self.model.policy
