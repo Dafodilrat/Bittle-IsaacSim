@@ -45,7 +45,7 @@ class TrainingGround:
         self.static_friction = 0.6 if type == "plane" else 0.8 if static_friction is None else static_friction
         self.dynamic_friction = 0.4 if type == "plane" else 0.5 if dynamic_friction is None else dynamic_friction
         self.z = TrainingGround.z_offset
-        TrainingGround.cell_size = self.size + 2.0
+        TrainingGround.cell_size = self.size + 5.0
         self.stage = get_current_stage()
         self._point_cache = []
 
