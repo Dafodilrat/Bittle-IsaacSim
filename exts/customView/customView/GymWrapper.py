@@ -12,21 +12,45 @@ class gym_env(gymnasium.Env):
     Encapsulates robot control, observation, reward shaping, and termination.
     """
 
-    def __init__(self, bittle, env, grnd, weights=[100, 10, 10, 0.5, 0.2, 10], joint_lock_dict=None):
+    # ===== Fixed reward weights (tune here) =====
+    UPRIGHT_W           = 1.0    # reward for being upright
+    SMOOTH_W            = 0.5    # reward for smooth actions (small deltas)
+    POSTURE_W           = 2.0    # penalty for excessive roll/pitch
+    JERK_W              = 0.5    # penalty for action changes
+    JOINT_VEL_W         = 0.3    # penalty for high joint velocities
+    VERT_MOTION_W       = 1.0    # penalty for vertical velocity/acceleration (anti-hop)
+    DIST_W              = 1.5    # penalty for distance-to-goal
+    HEADING_W           = 1.0    # reward for heading toward goal
+
+    GOAL_ARRIVAL_BONUS  = 20.0
+    TIPPING_PENALTY     = 5.0
+    RECOVERY_BONUS      = 2.0
+    ALIVE_BONUS         = 0.0    # small per-step bonus if desired (e.g., 0.02)
+
+    # vertical-motion deadbands (per-step units)
+    VZ_DEADBAND         = 0.005  # tolerate ~5 mm per-step z motion
+    AZ_DEADBAND         = 0.010  # tolerate small per-step z accel
+    UPWARD_BIAS         = 1.5    # penalize upward motion slightly more than downward
+
+    def __init__(self, bittle, env, grnd, weights=None, joint_lock_dict=None):
+        """
+        `weights` is kept for backward compatibility but is ignored by this version.
+        """
         super().__init__()
 
         # === Inputs and Config ===
         self.bittle = bittle
         self.environment = env
         self.grnd = grnd
-        self.weights = weights
+        self.weights = weights  # not used
         self.joint_lock_dict = joint_lock_dict or {}
 
         # === Joint masking ===
         joint_names = self.bittle.get_joint_names()
-        self.joint_lock_mask = np.array([
-            self.joint_lock_dict.get(name, False) for name in joint_names
-        ], dtype=bool)
+        self.joint_lock_mask = np.array(
+            [self.joint_lock_dict.get(name, False) for name in joint_names],
+            dtype=bool
+        )
 
         # === Action & Observation spaces ===
         dof, low, high = self.bittle.get_robot_dof()
@@ -48,14 +72,18 @@ class gym_env(gymnasium.Env):
         self.observation_space = spaces.Box(low=obs_low - 0.01, high=obs_high + 0.01, dtype=np.float64)
 
         # === State ===
-        self.prev_distance = 0
-        self.total_rewards = 0
-        self.delta = 0
+        self.prev_distance = 0.0
+        self.total_rewards = 0.0
+        self.delta = 0.0
 
         self._last_obs = None
         self._last_reward = 0.0
         self._last_done = False
         self._last_info = {}
+
+        # vertical-motion memory
+        self._prev_base_z = 0.0
+        self._prev_base_vz = 0.0
 
         # === Visualization ===
         self.goal_marker_path = f"/World/GoalMarker_{self.bittle.robot_prim.split('/')[-1]}"
@@ -86,11 +114,15 @@ class gym_env(gymnasium.Env):
         self.bittle.reset_simulation()
 
         self.prev_action = np.zeros_like(self.prev_action)
-        self.prev_distance = 0
-        self.total_rewards = 0
-        self.delta = 0
+        self.prev_distance = 0.0
+        self.total_rewards = 0.0
+        self.delta = 0.0
 
         self.observations = self.bittle.get_robot_observation()
+        pos, _, _, _ = self.observations
+        self._prev_base_z = float(pos[2])
+        self._prev_base_vz = 0.0
+
         self._last_obs = np.concatenate(self.observations)
         self._last_reward = 0.0
         self._last_done = False
@@ -107,7 +139,7 @@ class gym_env(gymnasium.Env):
         goal_reached = np.linalg.norm(np.array(pos[:2]) - np.array(self.current_goal[:2])) < 0.3
         collided_paths = self.environment.get_collided_bittle_prim_paths()
         self_collided = self.bittle.robot_prim in collided_paths
-        fall = pos[2] < 0
+        fall = pos[2] < 0.0
 
         if goal_reached:
             print(f"[TERMINATED] Goal reached by {self.bittle.robot_prim}", flush=True)
@@ -133,74 +165,66 @@ class gym_env(gymnasium.Env):
 
     def calculate_reward(self, action):
         pos, orientation, joint_angles, joint_velocities = self.observations
-        params = self.weights  # [upright, smooth, posture, jerk, vel, z, progress, heading]
         roll, pitch, yaw = orientation
+        delta = np.abs(action - self.prev_action)
 
-        # --- deltas / helpers
-        delta_a = np.abs(action - self.prev_action)
-
-        # 1) Upright posture
-        upright_bonus = np.clip(1.5 - (abs(roll) + abs(pitch)), 0.0, 1.5)
+        # --- Base posture and smoothness ---
         posture_penalty = (max(0.0, abs(roll) - 0.2) ** 2 +
-                        max(0.0, abs(pitch) - 0.2) ** 2)
+                           max(0.0, abs(pitch) - 0.2) ** 2)
+        jerk_penalty = np.linalg.norm(delta)
+        velocity_penalty = np.sum(np.tanh(np.abs(joint_velocities) / 100.0))
 
-        # 2) Smoothness & effort
-        smooth_bonus = np.exp(-np.linalg.norm(delta_a))
-        jerk_penalty = np.linalg.norm(delta_a)
-        effort_penalty = np.mean(np.square(action))                   # control effort
-        velocity_penalty = np.mean(np.tanh(np.abs(joint_velocities))) # saturates nicely
+        upright_bonus = np.clip(1.5 - (abs(roll) + abs(pitch)), 0.0, 1.5)
+        smooth_bonus = np.exp(-np.linalg.norm(delta))
 
-        # 3) Height / fall
-        # Penalize being low (fallen) rather than targeting a negative height
-        min_ok_height = 0.08
-        z_penalty = max(0.0, min_ok_height - pos[2])
+        # --- Goal terms ---
+        dist_to_goal = np.linalg.norm(self.current_goal[:2] - pos[:2])
+        self.delta = abs(self.prev_distance - dist_to_goal)
 
-        # 4) Goal progress & heading
-        goal_vec = np.array(self.current_goal[:2]) - np.array(pos[:2])
-        dist_to_goal = np.linalg.norm(goal_vec)
-        progress = self.prev_distance - dist_to_goal                 # + if moved closer
+        goal_vector = np.array(self.current_goal[:2]) - np.array(pos[:2])
+        robot_forward = np.array([np.cos(yaw), np.sin(yaw)])
+        goal_alignment_bonus = max(0.0, np.dot(goal_vector, robot_forward) /
+                                   (np.linalg.norm(goal_vector) + 1e-6))
 
-        goal_heading = np.arctan2(goal_vec[1], goal_vec[0])
-        yaw_err = (goal_heading - yaw + np.pi) % (2*np.pi) - np.pi   # wrap to [-pi, pi]
-        heading_bonus = (1.0 + np.cos(yaw_err)) / 2.0                # in [0,1]
-
-        # 5) Termination bonuses/penalties
         at_goal = (dist_to_goal < 0.1) and (abs(roll) < 0.3) and (abs(pitch) < 0.3)
-        goal_arrival_bonus = 20.0 if at_goal else 0.0
+        goal_arrival_bonus = self.GOAL_ARRIVAL_BONUS if at_goal else 0.0
 
-        is_tipped = abs(roll) > 0.8 or abs(pitch) > 0.8
-        tipping_penalty = 5.0 if is_tipped else 0.0
-
+        # --- Tip / recover ---
+        is_tipped = (abs(roll) > 0.8) or (abs(pitch) > 0.8)
+        tipping_penalty = self.TIPPING_PENALTY if is_tipped else 0.0
         was_tipped = getattr(self, "was_tipped_last", False)
-        recovering_bonus = 2.0 if was_tipped and not is_tipped else 0.0
+        recovering_bonus = self.RECOVERY_BONUS if was_tipped and not is_tipped else 0.0
         self.was_tipped_last = is_tipped
 
-        # Optional small alive bonus
-        alive_bonus = 0.05
+        # --- NEW: Vertical motion penalty (anti-hop / anti-crawl via bounce suppression) ---
+        z = float(pos[2])
+        vz = z - self._prev_base_z                 # per-step vertical velocity
+        az = vz - self._prev_base_vz               # per-step vertical accel
 
-        # --- Weighted sum (keep magnitudes comparable)
+        vz_term = max(0.0, abs(vz) - self.VZ_DEADBAND) * (self.UPWARD_BIAS if vz > 0 else 1.0)
+        az_term = max(0.0, abs(az) - self.AZ_DEADBAND)
+        vertical_motion_penalty = 0.5 * vz_term + 0.5 * az_term
+
+        # --- Combine reward ---
         reward = 0.0
-        reward += params[0] * upright_bonus
-        reward += params[1] * smooth_bonus
-        reward -= params[2] * posture_penalty
-        reward -= params[3] * jerk_penalty
-        reward -= params[4] * (0.5 * effort_penalty + 0.5 * velocity_penalty)
-        reward -= params[5] * z_penalty
-        reward += params[6] * progress               # <-- switched from -dist to +progress
-        reward += params[7] * heading_bonus
-        reward += goal_arrival_bonus + recovering_bonus + alive_bonus
+        reward += self.UPRIGHT_W      * upright_bonus
+        reward += self.SMOOTH_W       * smooth_bonus
+        reward -= self.POSTURE_W      * posture_penalty
+        reward -= self.JERK_W         * jerk_penalty
+        reward -= self.JOINT_VEL_W    * velocity_penalty
+        reward -= self.VERT_MOTION_W  * vertical_motion_penalty
+        reward -= self.DIST_W         * dist_to_goal
+        reward += self.HEADING_W      * goal_alignment_bonus
+        reward += goal_arrival_bonus + recovering_bonus + self.ALIVE_BONUS
         reward -= tipping_penalty
 
-        # (optional) clip to tame outliers
-        reward = float(np.clip(reward, -50.0, 50.0))
-
-        # State updates
+        # --- Update histories ---
         self.prev_action = action.copy()
         self.prev_distance = dist_to_goal
-        self.delta = abs(progress)
+        self._prev_base_vz = vz
+        self._prev_base_z = z
 
-        return reward
-
+        return float(np.clip(reward, -50.0, 50.0))
 
     def get_previous_observation(self):
         return self._last_obs

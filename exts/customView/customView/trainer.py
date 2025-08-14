@@ -68,7 +68,7 @@ class MultiAgentTrainer:
         from environment import Environment
 
         self.sim_env = Environment()
-        self.sim_env.add_training_grounds(n=self.num_agents, size=35.0)
+        self.sim_env.add_training_grounds(n=self.num_agents, size=30.0)
         self.sim_env.add_bittles(n=self.num_agents)
 
         self.agents.clear()
