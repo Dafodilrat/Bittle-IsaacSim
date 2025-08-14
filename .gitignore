@@ -4,3 +4,4 @@ ppo_logs/
 params.json
 checkpoints/
 checkpoints2/
+logs/
