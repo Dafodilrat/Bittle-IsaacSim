@@ -133,28 +133,39 @@ class gym_env(gymnasium.Env):
 
     def calculate_reward(self, action):
         pos, orientation, joint_angles, joint_velocities = self.observations
-        params = self.weights
-
+        params = self.weights  # [upright, smooth, posture, jerk, vel, z, progress, heading]
         roll, pitch, yaw = orientation
-        delta = np.abs(action - self.prev_action)
 
-        posture_penalty = (max(0, abs(roll) - 0.2) ** 2 + max(0, abs(pitch) - 0.2) ** 2)
-        jerk_penalty = np.linalg.norm(delta)
-        velocity_penalty = np.sum(np.tanh(np.abs(joint_velocities) / 100))
-        z_penalty = max(0.0, abs(-0.2 - pos[2]))
+        # --- deltas / helpers
+        delta_a = np.abs(action - self.prev_action)
 
-        upright_bonus = np.clip(1.5 - (abs(roll) + abs(pitch)), 0, 1.5)
-        smooth_bonus = np.exp(-np.linalg.norm(delta))
+        # 1) Upright posture
+        upright_bonus = np.clip(1.5 - (abs(roll) + abs(pitch)), 0.0, 1.5)
+        posture_penalty = (max(0.0, abs(roll) - 0.2) ** 2 +
+                        max(0.0, abs(pitch) - 0.2) ** 2)
 
-        dist_to_goal = np.linalg.norm(self.current_goal[:2] - pos[:2])
-        delta_dist = abs(self.prev_distance - dist_to_goal)
-        self.delta = delta_dist
+        # 2) Smoothness & effort
+        smooth_bonus = np.exp(-np.linalg.norm(delta_a))
+        jerk_penalty = np.linalg.norm(delta_a)
+        effort_penalty = np.mean(np.square(action))                   # control effort
+        velocity_penalty = np.mean(np.tanh(np.abs(joint_velocities))) # saturates nicely
 
-        goal_vector = np.array(self.current_goal[:2]) - np.array(pos[:2])
-        robot_forward = np.array([np.cos(yaw), np.sin(yaw)])
-        goal_alignment_bonus = max(0.0, np.dot(goal_vector, robot_forward) / (np.linalg.norm(goal_vector) + 1e-6))
+        # 3) Height / fall
+        # Penalize being low (fallen) rather than targeting a negative height
+        min_ok_height = 0.08
+        z_penalty = max(0.0, min_ok_height - pos[2])
 
-        at_goal = dist_to_goal < 0.1 and abs(roll) < 0.3 and abs(pitch) < 0.3
+        # 4) Goal progress & heading
+        goal_vec = np.array(self.current_goal[:2]) - np.array(pos[:2])
+        dist_to_goal = np.linalg.norm(goal_vec)
+        progress = self.prev_distance - dist_to_goal                 # + if moved closer
+
+        goal_heading = np.arctan2(goal_vec[1], goal_vec[0])
+        yaw_err = (goal_heading - yaw + np.pi) % (2*np.pi) - np.pi   # wrap to [-pi, pi]
+        heading_bonus = (1.0 + np.cos(yaw_err)) / 2.0                # in [0,1]
+
+        # 5) Termination bonuses/penalties
+        at_goal = (dist_to_goal < 0.1) and (abs(roll) < 0.3) and (abs(pitch) < 0.3)
         goal_arrival_bonus = 20.0 if at_goal else 0.0
 
         is_tipped = abs(roll) > 0.8 or abs(pitch) > 0.8
@@ -164,23 +175,32 @@ class gym_env(gymnasium.Env):
         recovering_bonus = 2.0 if was_tipped and not is_tipped else 0.0
         self.was_tipped_last = is_tipped
 
+        # Optional small alive bonus
+        alive_bonus = 0.05
+
+        # --- Weighted sum (keep magnitudes comparable)
         reward = 0.0
         reward += params[0] * upright_bonus
         reward += params[1] * smooth_bonus
         reward -= params[2] * posture_penalty
         reward -= params[3] * jerk_penalty
-        reward -= params[4] * velocity_penalty
+        reward -= params[4] * (0.5 * effort_penalty + 0.5 * velocity_penalty)
         reward -= params[5] * z_penalty
-        reward -= params[6] * dist_to_goal
-        reward += params[7] * goal_alignment_bonus
-        reward += goal_arrival_bonus
+        reward += params[6] * progress               # <-- switched from -dist to +progress
+        reward += params[7] * heading_bonus
+        reward += goal_arrival_bonus + recovering_bonus + alive_bonus
         reward -= tipping_penalty
-        reward += recovering_bonus
 
+        # (optional) clip to tame outliers
+        reward = float(np.clip(reward, -50.0, 50.0))
+
+        # State updates
         self.prev_action = action.copy()
         self.prev_distance = dist_to_goal
+        self.delta = abs(progress)
 
         return reward
+
 
     def get_previous_observation(self):
         return self._last_obs

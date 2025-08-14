@@ -26,6 +26,7 @@ class A2CAgent:
         self.buffer = self.model.rollout_buffer
         self.obs, _ = self.gym_env.reset()
         self.dones = [False]
+        self.set_lr_onpolicy(1e-4)
 
         if "cuda" in self.device:
             device_idx = int(self.device.split(":")[-1])
@@ -58,6 +59,11 @@ class A2CAgent:
         )
         self.post_init_()
     
+    def set_lr_onpolicy(self, lr: float):
+        self.model.lr_schedule = lambda _: lr
+        for g in self.model.policy.optimizer.param_groups:
+            g["lr"] = lr
+
     def load_model(self, step=-1):
         ckpt = load_checkpoint("a2c", self.gym_env.joint_lock_dict, self.save_dir, step=step)
         if ckpt:

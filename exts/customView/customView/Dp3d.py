@@ -28,6 +28,7 @@ class DDPGAgent:
         self.buffer = self.model.replay_buffer
         self.obs, _ = self.gym_env.reset()
         self.dones = [False]
+        self.set_lr_offpolicy(1e-4)
 
         if "cuda" in self.device:
             device_idx = int(self.device.split(":")[-1])
@@ -106,6 +107,14 @@ class DDPGAgent:
             },
             step=self.step_count
         )
+
+    def set_lr_offpolicy(self, lr: float):
+        # Make future SB3 updates use a constant LR
+        self.model.lr_schedule = lambda _: lr
+        # Apply immediately to current optimizers
+        for opt in (self.model.actor.optimizer, self.model.critic.optimizer):
+            for g in opt.param_groups:
+                g["lr"] = lr
 
     def predict_action(self, obs):
         action, _ = self.policy.predict(obs, deterministic=False)

@@ -28,6 +28,7 @@ class PPOAgent:
         self.buffer = self.model.rollout_buffer
         self.obs, _ = self.gym_env.reset()
         self.dones = [False]
+        self.set_lr_onpolicy(1e-4)
 
     def __init__(self, bittle, weights, sim_env, joint_states, grnd, device="cpu", log=True):
         # Initialize PPO agent with Gym environment and checkpoint management
@@ -73,7 +74,11 @@ class PPOAgent:
         else :
             self.log(f"[PPO] No chekpoint to load", flush=self.log_enabled)
 
-
+    def set_lr_onpolicy(self, lr: float):
+        self.model.lr_schedule = lambda _: lr
+        for g in self.model.policy.optimizer.param_groups:
+            g["lr"] = lr
+    
     def save(self, step_increment=1, prefix="ppo"):
         self.step_count += step_increment
         save_checkpoint(
