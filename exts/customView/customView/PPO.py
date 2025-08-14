@@ -65,7 +65,7 @@ class PPOAgent:
         ckpt = load_checkpoint("ppo", self.gym_env.joint_lock_dict, self.save_dir, step=step)
         
         if ckpt:
-            self.model=PPO.load(ckpt["path"],env=DummyVecEnv([lambda: self.gym_env]))
+            self.model=PPO.load(ckpt["path"],env=DummyVecEnv([lambda: self.gym_env]),device="cpu")
             self.step_count = ckpt["step"]
             self.log(f"[PPO] Loaded checkpoint from {ckpt['path']} at step {self.step_count}", flush=self.log_enabled)
             self.post_init_()

@@ -27,7 +27,11 @@ class TD3Agent:
         self.policy = self.model.policy
         self.buffer = self.model.replay_buffer
         self.obs, _ = self.gym_env.reset()
-        self.dones = [False]
+        self.dones = [False]    
+
+        if "cuda" in self.device:
+            device_idx = int(self.device.split(":")[-1])
+            th.cuda.set_device(device_idx)
 
         if not hasattr(self.model, "_logger"):
             self.model._logger = configure()  # Creates default stdout logger
@@ -55,10 +59,6 @@ class TD3Agent:
             joint_lock_dict=joint_states,
             grnd=grnd
         )
-
-        if "cuda" in self.device:
-            device_idx = int(self.device.split(":")[-1])
-            th.cuda.set_device(device_idx)
         
         self.model = TD3(
             policy="MlpPolicy",
@@ -74,7 +74,7 @@ class TD3Agent:
 
         ckpt = load_checkpoint("td3", self.gym_env.joint_lock_dict, self.save_dir, step=step)
         if ckpt:
-            self.model=TD3.load(ckpt["path"],env=DummyVecEnv([lambda: self.gym_env]))
+            self.model=TD3.load(ckpt["path"],env=DummyVecEnv([lambda: self.gym_env]),device=self.device)
             self.step_count = ckpt["step"]
             self.log(f"[TD3] Loaded checkpoint from {ckpt['path']} at step {self.step_count}", flush=self.log_enabled)
             self.post_init_()

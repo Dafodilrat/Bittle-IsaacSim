@@ -27,6 +27,10 @@ class A2CAgent:
         self.obs, _ = self.gym_env.reset()
         self.dones = [False]
 
+        if "cuda" in self.device:
+            device_idx = int(self.device.split(":")[-1])
+            th.cuda.set_device(device_idx)
+
 
     def __init__(self, bittle, weights, sim_env, joint_states, grnd, device="cpu", log = False):
         self.should_stop = False
@@ -44,10 +48,6 @@ class A2CAgent:
             joint_lock_dict=joint_states,
             grnd=grnd
         )
-
-        if "cuda" in self.device:
-            device_idx = int(self.device.split(":")[-1])
-            th.cuda.set_device(device_idx)
         
         self.model = A2C(
             policy="MlpPolicy",
@@ -61,7 +61,7 @@ class A2CAgent:
     def load_model(self, step=-1):
         ckpt = load_checkpoint("a2c", self.gym_env.joint_lock_dict, self.save_dir, step=step)
         if ckpt:
-            self.model=A2C.load(ckpt["path"],env=DummyVecEnv([lambda: self.gym_env]))
+            self.model=A2C.load(ckpt["path"],env=DummyVecEnv([lambda: self.gym_env]),device="cpu")
             self.step_count = ckpt["step"]
             self.log(f"[A2C] Loaded checkpoint from {ckpt['path']} at step {self.step_count}", flush=self.log_enabled)
             self.post_init_()

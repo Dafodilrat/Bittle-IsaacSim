@@ -29,6 +29,10 @@ class DDPGAgent:
         self.obs, _ = self.gym_env.reset()
         self.dones = [False]
 
+        if "cuda" in self.device:
+            device_idx = int(self.device.split(":")[-1])
+            th.cuda.set_device(device_idx)
+
         if not hasattr(self.model, "_logger"):
             self.model._logger = configure()  # Creates default stdout logger
             self.model._current_progress_remaining = 1.0  # or 0.5 if you want halfway-through LR
@@ -48,9 +52,6 @@ class DDPGAgent:
         self.global_step = 0
         self.gradient_steps = 1
 
-        if "cuda" in self.device:
-            device_idx = int(self.device.split(":")[-1])
-            th.cuda.set_device(device_idx)
 
         self.gym_env = gym_env(
             bittle=bittle,
@@ -75,7 +76,7 @@ class DDPGAgent:
         ckpt = load_checkpoint("dp3d", self.gym_env.joint_lock_dict, self.save_dir, step=step)
         
         if ckpt:
-            self.model=DDPG.load(ckpt["path"],env=DummyVecEnv([lambda: self.gym_env]))
+            self.model=DDPG.load(ckpt["path"],env=DummyVecEnv([lambda: self.gym_env]),device=self.device)
             self.step_count = ckpt["step"]
             self.log(f"[DDPG] Loaded checkpoint from {ckpt['path']} at step {self.step_count}", flush=self.log_enabled)
             self.post_init_()
