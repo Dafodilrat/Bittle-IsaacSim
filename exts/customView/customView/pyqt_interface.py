@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
-    QMessageBox, QSlider, QApplication, QFrame, QCheckBox, QTabWidget, QSpinBox
+    QMessageBox, QSlider, QApplication, QFrame, QCheckBox, QTabWidget, QSpinBox, QFileDialog
 )
 from PyQt5.QtOpenGL import QGLWidget
 from PyQt5.QtCore import Qt
@@ -92,7 +92,103 @@ class RLParamInputGUI(QWidget):
 
         self.initUI()
 
+    def init_load_save(self):
+
+        self.load_btn = QPushButton("Load Config")
+        self.load_btn.clicked.connect(self.load_config_file)
+
+        self.save_btn = QPushButton("Save Config")
+        self.save_btn.clicked.connect(self.save_config_file)
+
+        # Add them somewhere in your layout
+        btn_layout = QHBoxLayout()
+        btn_layout.addWidget(self.load_btn)
+        btn_layout.addWidget(self.save_btn)
+
+        return btn_layout
+
+    def apply_config_to_ui(self, cfg):
+        """
+        Apply loaded config dictionary to the UI.
+        Matches exactly what get_config() outputs.
+        """
+        try:
+            # Set number of agents
+            if "num_agents" in cfg:
+                self.agent_spinner.setValue(cfg["num_agents"])
+                self.generateTabs()  # rebuild tabs so we can populate them
+
+            # Restore parameters, joint states, and algorithms
+            for i, (sliders, checkboxes, algo_combo) in enumerate(self.bittle_tabs):
+                if "params" in cfg and i < len(cfg["params"]):
+                    for s, val in zip(sliders, cfg["params"][i]):
+                        # Scale back up if this param was divided by 10 in get_config()
+                        idx = sliders.index(s)
+                        label_text = self.param_defs[idx][0]
+                        if "x10" in label_text:
+                            s.setValue(int(val * 10))
+                        else:
+                            s.setValue(int(val))
+
+                if "joint_states" in cfg and i < len(cfg["joint_states"]):
+                    joint_state = cfg["joint_states"][i]
+                    for cb in checkboxes:
+                        if cb.text() in joint_state:
+                            cb.setChecked(bool(joint_state[cb.text()]))
+
+                if "algorithms" in cfg and i < len(cfg["algorithms"]):
+                    algo_combo.setCurrentText(cfg["algorithms"][i])
+
+            # Restore headless mode
+            if "headless" in cfg:
+                self.headless_checkbox.setChecked(bool(cfg["headless"]))
+
+            # Restore training mode
+            if "training_mode" in cfg:
+                self.training_mode_checkbox.setChecked(bool(cfg["training_mode"]))
+
+            # Restore checkpoint slider
+            if "demo_ckpt_step" in cfg and not self.load_latest_checkbox.isChecked():
+                if not self.demo_ckpt_slider:
+                    self.toggle_demo_slider()
+                if self.demo_ckpt_slider:
+                    self.demo_ckpt_slider.setValue(int(cfg["demo_ckpt_step"]))
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to apply config: {e}")
+
+
+    def load_config_file(self):
+        """Load a JSON config and update the UI."""
+        fname, _ = QFileDialog.getOpenFileName(self, "Load Config", "", "JSON Files (*.json)")
+        if not fname:
+            return
+        try:
+            with open(fname, "r") as f:
+                cfg = json.load(f)
+            # Apply cfg to your UI
+            self.apply_config_to_ui(cfg)
+            QMessageBox.information(self, "Config Loaded", f"Loaded configuration from {fname}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load config: {e}")
+
+    def save_config_file(self):
+        """Save the current UI config to a chosen JSON file."""
+        fname, _ = QFileDialog.getSaveFileName(self, "Save Config", "", "JSON Files (*.json)")
+        if not fname:
+            return
+        cfg = self.get_config()  # already returns a dict of params
+        try:
+            with open(fname, "w") as f:
+                json.dump(cfg, f, indent=2)
+            QMessageBox.information(self, "Config Saved", f"Saved configuration to {fname}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save config: {e}")
+
     def initUI(self):
+
+        btn_layout = self.init_load_save()
+
         main_layout = QHBoxLayout()
         self.control_layout = QVBoxLayout()
 
@@ -101,6 +197,7 @@ class RLParamInputGUI(QWidget):
         self.agent_spinner.setMaximum(40)
         self.agent_spinner.setValue(2)
         self.agent_spinner.valueChanged.connect(self.generateTabs)
+        self.control_layout.addLayout(btn_layout)
         self.control_layout.addWidget(QLabel("Number of Bittles"))
         self.control_layout.addWidget(self.agent_spinner)
 
@@ -378,6 +475,22 @@ class RLParamInputGUI(QWidget):
         try:
             config = self.get_config()
             with open("params.json", "w") as f:
+                json.dump(config, f, indent=2)
+
+            # Handle bittle.config rollover
+            base_name = "bittle"
+            ext = ".config"
+            current_file = base_name + ext
+
+            if os.path.exists(current_file):
+                # Find next available bittleN.config
+                i = 2
+                while os.path.exists(f"{base_name}{i}{ext}"):
+                    i += 1
+                os.rename(current_file, f"{base_name}{i}{ext}")
+
+            # Save current config to bittle.config
+            with open(current_file, "w") as f:
                 json.dump(config, f, indent=2)
 
             setup_script = f"{self.isaac_root}/python.sh"
