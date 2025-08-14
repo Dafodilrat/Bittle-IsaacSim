@@ -3,4 +3,4 @@ ppo_logs/
 .vscode/
 params.json
 checkpoints/
-ccheckpoints2/
+checkpoints2/
