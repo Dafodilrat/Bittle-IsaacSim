@@ -12,6 +12,11 @@ import torch as th
 import pynvml
 import glob
 
+import csv
+import json
+from datetime import datetime
+
+
 def log(msg, flush=False):
     if flush:
         print(msg, flush=True)
@@ -161,4 +166,103 @@ def load_checkpoint(algo, joint_lock_dict, save_dir, step=None, log_fn=print):
         latest_step = int(latest_path.split("step_")[-1].split(".")[0])
         return {"path": latest_path, "step": latest_step}
 
+# === Simple resume-able run logger ===========================================
+
+import os
+import csv
+import json
+from datetime import datetime
+from torch.utils.tensorboard import SummaryWriter
+from tools import ensure_dir_exists, format_joint_locks  # Assuming you already have these
+
+
+class RunLogger:
+    """
+    Scalar logger that:
+      - Writes <run_dir>/metrics.csv for human inspection
+      - Writes TensorBoard `.tfevents` files for visualization
+      - Run name is based on model name and joint lock configuration
+      - Can resume from arbitrary step offsets (e.g., after loading checkpoints)
+    """
+
+    def __init__(self, agent_name, joint_lock_dict, base_dir=None):
+        self.model = agent_name
+        self.base_dir = base_dir or "./logs"
+        self.joint_lock_dict = joint_lock_dict
+        self.run_name = self.make_run_name()
+
+        # Ensure base + run dir exist
+        ensure_dir_exists(self.base_dir)
+        self.run_dir = os.path.join(self.base_dir, self.run_name)
+        ensure_dir_exists(self.run_dir)
+
+        # File paths
+        self.csv_path = os.path.join(self.run_dir, "metrics.csv")
+        self.meta_path = os.path.join(self.run_dir, "meta.json")
+
+        # Step tracking
+        self._step_offset = 0
+        self._cursor = 0
+
+        # Create CSV header if new
+        if not os.path.exists(self.csv_path):
+            with open(self.csv_path, "w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(["step", "key", "value", "time"])
+
+        # TensorBoard writer
+        self.tb_writer = SummaryWriter(log_dir=self.run_dir)
+
+    def make_run_name(self):
+        suffix = format_joint_locks(self.joint_lock_dict)
+        return f"{self.model}-{suffix}"
+
+    def set_step_offset(self, offset: int):
+        """Set starting step for resumed runs."""
+        self._step_offset = int(max(0, offset))
+        self._cursor = 0
+        meta = {
+            "run_name": self.run_name,
+            "step_offset": self._step_offset,
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+        }
+        with open(self.meta_path, "w") as f:
+            json.dump(meta, f, indent=2)
+
+    def _now(self):
+        return datetime.utcnow().isoformat() + "Z"
+
+    def log_scalar(self, key: str, value: float, step: int | None = None):
+        """Log a single scalar to CSV + TensorBoard."""
+        if step is None:
+            step = self._step_offset + self._cursor
+            self._cursor += 1
+
+        # CSV
+        with open(self.csv_path, "a", newline="") as f:
+            w = csv.writer(f)
+            w.writerow([int(step), str(key), float(value), self._now()])
+
+        # TensorBoard
+        self.tb_writer.add_scalar(key, value, step)
+
+    def log_many(self, kv: dict[str, float], step: int | None = None):
+        """Log a dict of scalars at one step to CSV + TensorBoard."""
+        if step is None:
+            step = self._step_offset + self._cursor
+            self._cursor += 1
+
+        # CSV
+        with open(self.csv_path, "a", newline="") as f:
+            w = csv.writer(f)
+            for k, v in kv.items():
+                w.writerow([int(step), str(k), float(v), self._now()])
+
+        # TensorBoard
+        for k, v in kv.items():
+            self.tb_writer.add_scalar(k, v, step)
+
+    def close(self):
+        """Close the TensorBoard writer."""
+        self.tb_writer.close()
 

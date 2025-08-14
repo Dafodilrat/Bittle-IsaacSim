@@ -8,7 +8,7 @@ from stable_baselines3 import TD3
 from stable_baselines3.common.vec_env import DummyVecEnv
 from GymWrapper import gym_env
 from tools import log as logger
-from tools import save_checkpoint, load_checkpoint, format_joint_locks
+from tools import save_checkpoint, load_checkpoint, format_joint_locks, RunLogger
 from stable_baselines3.common.logger import configure
 
 
@@ -22,6 +22,16 @@ class TD3Agent:
     Twin Delayed DDPG (TD3) agent wrapper.
     Includes checkpointing, adaptive training step control, and buffer management.
     """
+    def post_init_(self):
+        self.tensorboard_log = RunLogger(base_dir=os.path.join(os.environ.get("ISAACSIM_PATH"), "alpha", "logs"), agent_name="TD3", joint_lock_dict=self.gym_env.joint_lock_dict)
+        self.policy = self.model.policy
+        self.buffer = self.model.replay_buffer
+        self.obs, _ = self.gym_env.reset()
+        self.dones = [False]
+
+        if not hasattr(self.model, "_logger"):
+            self.model._logger = configure()  # Creates default stdout logger
+            self.model._current_progress_remaining = 1.0  # or 0.5 if you want halfway-through LR
 
     def __init__(self, bittle, weights, sim_env, joint_states, grnd, device="cpu", log=False):
         self.should_stop = False
@@ -58,14 +68,7 @@ class TD3Agent:
             tensorboard_log=os.path.join(os.environ.get("ISAACSIM_PATH"),"alpha","logs")
         )
 
-        self.policy = self.model.policy
-        self.buffer = self.model.replay_buffer
-        self.obs, _ = self.gym_env.reset()
-        self.dones = [False]
-
-        if not hasattr(self.model, "_logger"):
-            self.model._logger = configure()  # Creates default stdout logger
-            self.model._current_progress_remaining = 1.0  # or 0.5 if you want halfway-through LR
+        self.post_init_()
 
     def load_model(self, step=-1):
 
@@ -74,13 +77,8 @@ class TD3Agent:
             self.model=TD3.load(ckpt["path"],env=DummyVecEnv([lambda: self.gym_env]))
             self.step_count = ckpt["step"]
             self.log(f"[TD3] Loaded checkpoint from {ckpt['path']} at step {self.step_count}", flush=self.log_enabled)
-            self.policy = self.model.policy
-            self.buffer = self.model.replay_buffer
-            self.policy = self.model.policy
-            self.buffer = self.model.replay_buffer
-            if not hasattr(self.model, "_logger"):
-                self.model._logger = configure()  # Creates default stdout logger
-                self.model._current_progress_remaining = 1.0  # or 0.5 if you want halfway-through LR
+            self.post_init_()
+            self.tensorboard_log.set_step_offset(self.step_count)   
         else :
             self.log(f"[TD3] No chekpoint to load", flush=self.log_enabled)
 
@@ -93,6 +91,18 @@ class TD3Agent:
             step_count=self.step_count,
             save_dir=self.save_dir,
             log_fn=self.log if self.log_enabled else print
+        )
+
+        obs, reward, done, info = self.gym_env.post_step()
+
+        self.tensorboard_log.log_many(
+            {
+                "reward": float(reward),
+                "dist_to_goal": float(info.get("distance_to_goal", 0.0)),
+                "z_height": float(info.get("pose", [0,0,0])[2]) if "pose" in info else 0.0,
+                "done": 1.0 if done else 0.0,
+            },
+            step=self.step_count
         )
 
     def predict_action(self, obs):
