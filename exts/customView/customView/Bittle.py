@@ -4,8 +4,10 @@ from isaacsim.sensors.physics import _sensor
 from isaacsim.core.utils.stage import add_reference_to_stage, get_current_stage
 from isaacsim.sensors.physics import IMUSensor
 from pxr import UsdPhysics, PhysxSchema, UsdGeom, Sdf, Gf, UsdShade
-from omni.kit.commands import execute
-from omni.isaac.core.simulation_context import SimulationContext
+from isaacsim.core.api.controllers import ArticulationController
+from isaacsim.core.utils.types import ArticulationAction
+from isaacsim.core.api.materials import PhysicsMaterial
+
 
 import os
 import time
@@ -27,6 +29,7 @@ class Bittle:
         self.world = world
         self.spawn_cords = cords
         self.robot_view = None
+        self.ctrl = None  # ArticulationController instance
         self.color = tuple(random.uniform(0.4, 1.0) for _ in range(3))  # RGB in [0.4–1.0]
 
     def log(self, *args, **kwargs):
@@ -38,12 +41,12 @@ class Bittle:
         self.log("[Bittle] reset called")
         self.respawn_bittle()
         wait_for_prim(self.robot_prim)
-        self.enforce_vel_limits()
         self.log("Simulation started")
 
     def set_robot_action(self, action):
         """Apply joint action to the robot."""
-        self.robot_view.set_joint_positions(action)
+        self.ctrl.apply_action(ArticulationAction(joint_positions=action))
+
 
     def get_robot_dof(self):
         """Return DOF count, lower and upper limits."""
@@ -81,25 +84,22 @@ class Bittle:
         """Alias for reset."""
         self.reset()
 
-    def enforce_vel_limits(self):
-        """Clamp all joint velocity limits to 90 deg/sec."""
-        joint_names = self.robot_view.dof_names
-        for name in joint_names:
-            joint_path = f"{self.robot_prim}/joints/{name}"
-            joint_prim = get_prim_at_path(joint_path)
-            if not joint_prim.IsValid():
-                self.log(f"[Warning] Joint not found: {joint_path}")
-                continue
-            attr = joint_prim.GetAttribute("physics:joint:velocityLimit")
-            if not attr.IsValid():
-                attr = joint_prim.CreateAttribute("physics:joint:velocityLimit", Sdf.ValueTypeNames.Float)
-            attr.Set(90.0)
-            self.log(f"Enforced velocity limit on {name}")
-
     def set_articulation(self):
-        """Attach articulation API and initialize robot."""
-        self.robot_view = Articulation(self.robot_prim)
-        self.robot_view.initialize()
+            self.robot_view = Articulation(self.robot_prim)
+            self.robot_view.initialize()
+
+            # --- NEW: PD controller wrapper ---
+            self.ctrl = ArticulationController()
+            self.ctrl.initialize(self.robot_view)
+
+            # switch to position control for all DOFs (you can also do per‑DOF)
+            self.ctrl.switch_control_mode("position")
+
+            # reasonable default gains (tune!)
+            n = self.robot_view.num_dof
+            kp = np.full((n,), 15.0, dtype=np.float32)   # start 10–40
+            kd = np.full((n,),  1.0, dtype=np.float32)   # start 0.5–2
+            self.ctrl.set_gains(kps=kp, kds=kd, save_to_usd=False)
 
     def spawn_bittle(self):
         """Create a fresh Bittle robot from USD, apply pose and appearance."""
@@ -120,17 +120,12 @@ class Bittle:
         else:
             self.log("[Bittle] Already has articulation:root =", prim.GetAttribute("articulation:root").Get())
 
-        prim.SetInstanceable(False)
-
-        # Remove material bindings and apply color
-        self.unbind_materials()
-        self.apply_display_color()
-
         # Initial spawn pose
         x, y, z = self.spawn_cords
         xform = UsdGeom.Xformable(prim)
         xform.ClearXformOpOrder()
         xform.AddTranslateOp().Set(Gf.Vec3d(x, y, 1))
+        self._apply_rubber_to_knees()
         wait_for_physics()
 
     def apply_display_color(self):
@@ -145,18 +140,6 @@ class Bittle:
         prim = get_prim_at_path(self.robot_prim)
         recursive_color(prim)
         self.log(f"[COLOR] Applied color {self.color} to {self.robot_prim}")
-
-    def unbind_materials(self):
-        """Remove all material bindings recursively."""
-        def recursive_unbind(prim):
-            binding = UsdShade.MaterialBindingAPI(prim)
-            binding.UnbindDirectBinding()
-            for child in prim.GetChildren():
-                recursive_unbind(child)
-
-        prim = get_prim_at_path(self.robot_prim)
-        recursive_unbind(prim)
-        self.log(f"[COLOR] Unbound materials for {self.robot_prim}")
 
     def respawn_bittle(self):
         """Reset robot joint positions and teleport to spawn."""
