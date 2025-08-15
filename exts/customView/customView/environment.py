@@ -42,7 +42,8 @@ class Environment:
         self.setup_stage_and_physics()
 
         self.world = World(stage_units_in_meters=1.0, physics_prim_path=self.physics, set_defaults=True, device="cuda")
-        # PhysicsContext(prim_path=self.physics)
+        self.world.set_simulation_dt(1.0 / 120.0)   # was likely 1/240; try 1/120 or even 1/90
+        # self.world.set_gpu_dynamics_enabled(enabled)
         self.world.reset()
         self.world.play()
 
@@ -61,21 +62,44 @@ class Environment:
         self.clear_stage()
         wait_for_stage_ready()
 
+        # Create USD physics scene
         scene = UsdPhysics.Scene.Define(self.stage, Sdf.Path(self.physics))
         scene.CreateGravityDirectionAttr().Set(Gf.Vec3f(0.0, 0.0, -1.0))
         scene.CreateGravityMagnitudeAttr().Set(9.81)
 
-        PhysxSchema.PhysxSceneAPI.Apply(self.stage.GetPrimAtPath(self.physics))
-        physxSceneAPI = PhysxSchema.PhysxSceneAPI.Get(self.stage, self.physics)
-        physxSceneAPI.CreateEnableCCDAttr(True)
-        physxSceneAPI.CreateEnableStabilizationAttr(True)
-        physxSceneAPI.CreateEnableGPUDynamicsAttr(False)
-        physxSceneAPI.CreateBroadphaseTypeAttr("MBP")
-        physxSceneAPI.CreateSolverTypeAttr("TGS")
-        
-        wait_for_physics(prim_path=self.physics)
+        # Global runtime knobs
+        import carb
+        settings = carb.settings.get_settings()
+        settings.set("/physics/physx/workerThreadCount", 0)  # 0 = auto (all cores)
+        settings.set("/physics/physx/useGpu", True)          # enable GPU PhysX if available
+        # settings.set("/app/asyncRendering", True)            # decouple render from sim
+        settings.set("/rtx/enabled", False)                  # faster while training
 
+        # PhysX scene API
+        PhysxSchema.PhysxSceneAPI.Apply(self.stage.GetPrimAtPath(self.physics))
+        physx = PhysxSchema.PhysxSceneAPI.Get(self.stage, self.physics)
+
+        # Dynamics & solver
+        physx.CreateEnableGPUDynamicsAttr(True)
+        physx.CreateSolverTypeAttr("TGS")
+
+        # Iterations — use the *Max* attribute names (new API)
+        # Start lean; bump to (6,2) if you see penetration/jitter.
+        if hasattr(physx, "CreateMaxPositionIterationCountAttr"):
+            physx.CreateMaxPositionIterationCountAttr(4)
+        if hasattr(physx, "CreateMaxVelocityIterationCountAttr"):
+            physx.CreateMaxVelocityIterationCountAttr(1)
+
+        # Cheap settings for throughput
+        physx.CreateEnableCCDAttr(True)            # off unless you have tiny/fast links
+        physx.CreateEnableStabilizationAttr(True)  # enable only if stacks jitter
+        physx.CreateBroadphaseTypeAttr("MBP")
+        # physx.CreateEnableSleepAttr(True)
+
+        wait_for_physics(prim_path=self.physics)
         print("[ENV] Environment initialization complete!")
+
+
 
     def clear_stage(self):
         omni.usd.get_context().new_stage()
