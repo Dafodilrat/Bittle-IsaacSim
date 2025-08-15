@@ -60,10 +60,21 @@ class Environment:
         print("[ENV] Setting up stage and physics for Kit extension...")
         self.clear_stage()
         wait_for_stage_ready()
+
         scene = UsdPhysics.Scene.Define(self.stage, Sdf.Path(self.physics))
         scene.CreateGravityDirectionAttr().Set(Gf.Vec3f(0.0, 0.0, -1.0))
         scene.CreateGravityMagnitudeAttr().Set(9.81)
+
+        PhysxSchema.PhysxSceneAPI.Apply(self.stage.GetPrimAtPath(self.physics))
+        physxSceneAPI = PhysxSchema.PhysxSceneAPI.Get(self.stage, self.physics)
+        physxSceneAPI.CreateEnableCCDAttr(True)
+        physxSceneAPI.CreateEnableStabilizationAttr(True)
+        physxSceneAPI.CreateEnableGPUDynamicsAttr(False)
+        physxSceneAPI.CreateBroadphaseTypeAttr("MBP")
+        physxSceneAPI.CreateSolverTypeAttr("TGS")
+        
         wait_for_physics(prim_path=self.physics)
+
         print("[ENV] Environment initialization complete!")
 
     def clear_stage(self):
