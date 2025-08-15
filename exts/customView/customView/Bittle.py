@@ -125,7 +125,6 @@ class Bittle:
         xform = UsdGeom.Xformable(prim)
         xform.ClearXformOpOrder()
         xform.AddTranslateOp().Set(Gf.Vec3d(x, y, 1))
-        self._apply_rubber_to_knees()
         wait_for_physics()
 
     def apply_display_color(self):
